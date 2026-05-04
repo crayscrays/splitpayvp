@@ -1,0 +1,43 @@
+{
+  "name": "@0xchat/miniapp-sdk",
+  "version": "0.1.0",
+  "description": "Build agents and mini-apps on 0xChat with wallet, identity, social graph, and webhook support.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "main": "./dist/index.cjs",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "0xchat",
+    "sdk",
+    "mini-app",
+    "agent",
+    "web3",
+    "nostr"
+  ],
+  "author": "0xchat",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^20.19.39",
+    "tsup": "^8.0.0",
+    "typescript": "^5.0.0"
+  },
+  "files": [
+    "dist"
+  ]
+}
