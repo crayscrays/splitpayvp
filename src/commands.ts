@@ -25,7 +25,7 @@ import type {
   MessageContext as MsgContext,
   CardField,
   CardAction,
-} from "@0xchat/miniapp-sdk";
+} from "@0xchat/agent-sdk";
 type PaymentContext = MsgContext;
 
 // ---- Helpers ----

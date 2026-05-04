@@ -3,5 +3,5 @@ import { defineConfig } from "tsup";
 export default defineConfig({
   entry: ["src/index.ts"],
   format: ["esm"],
-  noExternal: ["@0xchat/miniapp-sdk"],
+  noExternal: ["@0xchat/agent-sdk"],
 });

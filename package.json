@@ -5,19 +5,19 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsup",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "postinstall": "mkdir -p node_modules/@0xchat/agent-sdk/dist && cp vendor/0xchat-miniapp-sdk/dist/index.js node_modules/@0xchat/agent-sdk/dist/index.mjs && cp vendor/0xchat-miniapp-sdk/dist/index.cjs node_modules/@0xchat/agent-sdk/dist/index.js && cp vendor/0xchat-miniapp-sdk/dist/index.d.ts node_modules/@0xchat/agent-sdk/dist/index.d.ts"
   },
   "dependencies": {
-    "@0xchat/miniapp-sdk": "file:./vendor/0xchat-miniapp-sdk",
+    "@0xchat/agent-sdk": "github:crayscrays/0xchat-agent-sdk",
     "@supabase/supabase-js": "^2.104.1",
-    "dotenv": "^16.4.5",
-    "express": "^4.21.0"
+    "dotenv": "^16.4.5"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
     "@types/node": "^20.11.0",
-    "tsup": "^8.0.0",
+    "tsup": "^8.5.1",
     "tsx": "^4.7.0",
-    "typescript": "^5.3.0"
+    "typescript": "^5.9.3"
   }
 }

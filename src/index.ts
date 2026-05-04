@@ -1,6 +1,6 @@
 import "dotenv/config";
-import { createAgent } from "@0xchat/miniapp-sdk";
-import type { SlashCommandDefinition } from "@0xchat/miniapp-sdk";
+import { createAgent } from "@0xchat/agent-sdk";
+import type { SlashCommandDefinition } from "@0xchat/agent-sdk";
 import {
   handleHelp,
   handleCreate,
@@ -14,7 +14,7 @@ import {
   handleSettle,
   handlePaymentComplete,
 } from "./commands.js";
-import type { MessageContext, SlashCommandContext } from "@0xchat/miniapp-sdk";
+import type { MessageContext, SlashCommandContext } from "@0xchat/agent-sdk";
 type PaymentContext = MessageContext;
 
 const COMMANDS: SlashCommandDefinition[] = [
