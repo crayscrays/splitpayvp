@@ -169,7 +169,8 @@ export async function handleJoin(args: string, ctx: MsgContext): Promise<void> {
 
   // Add @mentioned user
   const targetName = mentionMatch[1].toLowerCase();
-  const chatMembers = await ctx.group.getMembers();
+  const chatMembersRaw = await ctx.group.getMembers();
+  const chatMembers = Array.isArray(chatMembersRaw) ? chatMembersRaw : (chatMembersRaw as any)?.members ?? [];
   const target = chatMembers.find(
     (m) =>
       (m.displayName || "").toLowerCase() === targetName ||
@@ -253,7 +254,8 @@ export async function handleAdd(args: string, ctx: MsgContext): Promise<void> {
   let splitMembers: GroupMember[];
 
   if (mentionedNames.length > 0) {
-    const chatMembers = await ctx.group.getMembers();
+    const chatMembersRaw = await ctx.group.getMembers();
+    const chatMembers = Array.isArray(chatMembersRaw) ? chatMembersRaw : (chatMembersRaw as any)?.members ?? [];
 
     const unknownNames = mentionedNames.filter(
       (name) =>
