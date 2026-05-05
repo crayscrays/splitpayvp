@@ -69,26 +69,33 @@ async function adaptSlashCtx(ctx: SlashCommandContext): Promise<MessageContext> 
 }
 
 agent.on("slash_command", async (ctx: SlashCommandContext) => {
-  const adapted = await adaptSlashCtx(ctx);
-  const args = ctx.rawArgs;
+  console.log(`[slash_command] /${ctx.commandName} args="${ctx.rawArgs}" sender=${ctx.senderWallet} group=${ctx.groupId}`);
+  try {
+    const adapted = await adaptSlashCtx(ctx);
+    const args = ctx.rawArgs;
 
-  switch (ctx.commandName) {
-    case "help":                          await handleHelp(adapted);            break;
-    case "create":                        await handleCreate(args, adapted);    break;
-    case "link":                          await handleLink(args, adapted);      break;
-    case "join":                          await handleJoin(args, adapted);      break;
-    case "status": case "info":           await handleStatus(adapted);          break;
-    case "add":                           await handleAdd(args, adapted);       break;
-    case "expenses": case "history": case "list": await handleExpenses(args, adapted); break;
-    case "balance": case "balances":      await handleBalance(adapted);         break;
-    case "debts": case "debt": case "owes": await handleDebts(adapted);         break;
-    case "settle": case "settleup": case "pay": await handleSettle(adapted);    break;
-    default:
-      await ctx.reply(`Unknown command "/${ctx.commandName}". Type /help to see available commands.`);
+    switch (ctx.commandName) {
+      case "help":                          await handleHelp(adapted);            break;
+      case "create":                        await handleCreate(args, adapted);    break;
+      case "link":                          await handleLink(args, adapted);      break;
+      case "join":                          await handleJoin(args, adapted);      break;
+      case "status": case "info":           await handleStatus(adapted);          break;
+      case "add":                           await handleAdd(args, adapted);       break;
+      case "expenses": case "history": case "list": await handleExpenses(args, adapted); break;
+      case "balance": case "balances":      await handleBalance(adapted);         break;
+      case "debts": case "debt": case "owes": await handleDebts(adapted);         break;
+      case "settle": case "settleup": case "pay": await handleSettle(adapted);    break;
+      default:
+        await ctx.reply(`Unknown command "/${ctx.commandName}". Type /help to see available commands.`);
+    }
+    console.log(`[slash_command] /${ctx.commandName} handled ok`);
+  } catch (err) {
+    console.error(`[slash_command] /${ctx.commandName} error:`, err);
   }
 });
 
 agent.on("message", async (ctx: MessageContext) => {
+  console.log(`[message] content="${ctx.content.slice(0, 80)}" sender=${ctx.sender.wallet} group=${ctx.groupId}`);
   let content = ctx.content.trim();
 
   // Strip leading @mention prefix, e.g. "@SplitPay /add 50 dinner"
@@ -123,6 +130,9 @@ agent.on("payment_complete", async (ctx: PaymentContext) => {
 const PORT = Number(process.env.PORT) || 3000;
 agent.listen(PORT);
 console.log(`SplitPay agent listening on port ${PORT}`);
+console.log(`  API key: ${process.env.AGENT_API_KEY ? "set" : "MISSING"}`);
+console.log(`  Webhook secret: ${process.env.OXCHAT_WEBHOOK_SECRET ? "set" : "not set (signature checks skipped)"}`);
+console.log(`  Base URL: https://0xchat.cresign.xyz`);
 
 agent.registerCommands(COMMANDS).catch((err) =>
   console.error("Failed to register slash commands:", err)
