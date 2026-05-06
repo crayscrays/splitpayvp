@@ -134,6 +134,8 @@ console.log(`SplitPay agent listening on port ${PORT}`);
 console.log(`  API key: ${process.env.AGENT_API_KEY ? "set" : "MISSING"}`);
 console.log(`  Webhook secret: ${process.env.OXCHAT_WEBHOOK_SECRET ? "set" : "not set (signature checks skipped)"}`);
 console.log(`  Base URL: https://0xchat.cresign.xyz`);
+console.log(`  Supabase URL: ${process.env.SUPABASE_URL ? process.env.SUPABASE_URL : "MISSING"}`);
+console.log(`  Supabase key: ${process.env.SUPABASE_ANON_KEY ? "set" : "MISSING"}`);
 
 agent.registerCommands(COMMANDS).catch((err) =>
   console.error("Failed to register slash commands:", err)

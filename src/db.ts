@@ -45,13 +45,14 @@ export async function publishGroup(group: {
   inviteCode: string;
 }): Promise<void> {
   try {
-    await db()
+    const { error } = await db()
       .from("groups")
       .upsert(
         { id: group.id, name: group.name, avatar: group.avatar, invite_code: group.inviteCode },
         { onConflict: "id" }
       );
-  } catch {}
+    if (error) console.error("[db] publishGroup error:", error.message);
+  } catch (e) { console.error("[db] publishGroup threw:", e); }
 }
 
 export async function fetchGroupName(groupId: string): Promise<string> {
@@ -65,7 +66,7 @@ export async function fetchGroupName(groupId: string): Promise<string> {
 
 export async function publishMember(groupId: string, member: GroupMember): Promise<void> {
   try {
-    await db()
+    const { error } = await db()
       .from("group_members")
       .upsert(
         {
@@ -77,7 +78,8 @@ export async function publishMember(groupId: string, member: GroupMember): Promi
         },
         { onConflict: "group_id,wallet_address" }
       );
-  } catch {}
+    if (error) console.error("[db] publishMember error:", error.message);
+  } catch (e) { console.error("[db] publishMember threw:", e); }
 }
 
 export async function fetchMembers(groupId: string): Promise<GroupMember[]> {
@@ -99,13 +101,14 @@ export async function fetchMembers(groupId: string): Promise<GroupMember[]> {
 
 export async function publishExpense(expense: Expense): Promise<void> {
   try {
-    await db().from("group_expenses").upsert({
+    const { error } = await db().from("group_expenses").upsert({
       id: expense.id,
       group_id: expense.groupId,
       data: expense,
       updated_at: new Date().toISOString(),
     });
-  } catch {}
+    if (error) console.error("[db] publishExpense error:", error.message);
+  } catch (e) { console.error("[db] publishExpense threw:", e); }
 }
 
 export async function fetchExpenses(groupId: string): Promise<Expense[]> {
@@ -143,8 +146,9 @@ export async function resolveInviteCode(
 
 export async function publishInviteCode(code: string, info: object): Promise<void> {
   try {
-    await db()
+    const { error } = await db()
       .from("invite_codes")
       .upsert({ code: code.toUpperCase(), data: info }, { onConflict: "code" });
-  } catch {}
+    if (error) console.error("[db] publishInviteCode error:", error.message);
+  } catch (e) { console.error("[db] publishInviteCode threw:", e); }
 }
