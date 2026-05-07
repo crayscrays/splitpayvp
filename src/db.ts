@@ -55,13 +55,12 @@ export async function publishGroup(group: {
   } catch (e) { console.error("[db] publishGroup threw:", e); }
 }
 
-export async function fetchGroupName(groupId: string): Promise<string> {
+export async function fetchGroupName(groupId: string): Promise<string | null> {
   try {
-    const { data } = await db().from("groups").select("name").eq("id", groupId).single();
-    return (data as { name: string } | null)?.name ?? "Unknown Group";
-  } catch {
-    return "Unknown Group";
-  }
+    const { data, error } = await db().from("groups").select("name").eq("id", groupId).single();
+    if (error) { console.error("[db] fetchGroupName error:", error.message); return null; }
+    return (data as { name: string } | null)?.name ?? null;
+  } catch (e) { console.error("[db] fetchGroupName threw:", e); return null; }
 }
 
 export async function publishMember(groupId: string, member: GroupMember): Promise<void> {

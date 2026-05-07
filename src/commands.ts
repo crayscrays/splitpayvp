@@ -90,8 +90,11 @@ export async function handleCreate(args: string, ctx: MsgContext): Promise<void>
   const existing = (await ctx.group.getState("splitpay_group_id")) as string | null;
   if (existing) {
     const existingName = await fetchGroupName(existing);
-    await ctx.reply(`Already linked to "${existingName}". Use /link <code> to switch.`);
-    return;
+    if (existingName !== null) {
+      await ctx.reply(`Already linked to "${existingName}". Use /link <code> to switch.`);
+      return;
+    }
+    // Group not found in DB (stale state) — fall through and re-create
   }
 
   const groupId = uid("grp");
@@ -201,7 +204,7 @@ export async function handleStatus(ctx: MsgContext): Promise<void> {
   if (!groupId) return;
 
   const [name, members, expenses] = await Promise.all([
-    fetchGroupName(groupId),
+    fetchGroupName(groupId).then(n => n ?? "Unknown Group"),
     fetchMembers(groupId),
     fetchExpenses(groupId),
   ]);
