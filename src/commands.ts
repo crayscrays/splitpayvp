@@ -30,8 +30,16 @@ type PaymentContext = MsgContext;
 
 // ---- Helpers ----
 
+function extractState(raw: unknown): string | null {
+  if (!raw) return null;
+  if (typeof raw === "string") return raw;
+  if (typeof raw === "object" && raw !== null && "value" in raw)
+    return (raw as { value: string }).value || null;
+  return null;
+}
+
 async function requireGroup(ctx: MsgContext): Promise<string | null> {
-  const id = (await ctx.group.getState("splitpay_group_id")) as string | null;
+  const id = extractState(await ctx.group.getState("splitpay_group_id"));
   if (!id) {
     await ctx.reply(
       "No group linked to this chat.\nUse /create <name> to start one, or /link <code> to connect an existing group."
@@ -87,7 +95,7 @@ export async function handleCreate(args: string, ctx: MsgContext): Promise<void>
     return;
   }
 
-  const existing = (await ctx.group.getState("splitpay_group_id")) as string | null;
+  const existing = extractState(await ctx.group.getState("splitpay_group_id"));
   if (existing) {
     const existingName = await fetchGroupName(existing);
     if (existingName !== null) {
@@ -117,6 +125,8 @@ export async function handleCreate(args: string, ctx: MsgContext): Promise<void>
 
   await ctx.group.setState("splitpay_group_id", groupId);
 
+  await ctx.reply(`Group "${name}" created!\nInvite code: ${inviteCode}\n\nShare the code with others (/link ${inviteCode}) or add them with /join @username.`);
+
   await ctx.replyCard({
     title: name,
     subtitle: "Group created — share the invite code below",
@@ -135,6 +145,15 @@ export async function handleLink(args: string, ctx: MsgContext): Promise<void> {
     return;
   }
 
+  const existing = extractState(await ctx.group.getState("splitpay_group_id"));
+  if (existing) {
+    const existingName = await fetchGroupName(existing);
+    if (existingName !== null) {
+      await ctx.reply(`This chat is already linked to "${existingName}". Each chat can only have one SplitPay group.`);
+      return;
+    }
+  }
+
   const info = await resolveInviteCode(code);
   if (!info) {
     await ctx.reply(`No group found for code "${code}". Double-check and try again.`);
@@ -143,7 +162,7 @@ export async function handleLink(args: string, ctx: MsgContext): Promise<void> {
 
   await publishGroup({ id: info.groupId, name: info.groupName, avatar: "", inviteCode: info.inviteCode });
   await ctx.group.setState("splitpay_group_id", info.groupId);
-  await ctx.reply(`Linked to "${info.groupName}". Type /add to start tracking expenses.`);
+  await ctx.reply(`Linked to "${info.groupName}". Type /join to add yourself, or /add to start tracking expenses.`);
 }
 
 export async function handleJoin(args: string, ctx: MsgContext): Promise<void> {
@@ -210,7 +229,7 @@ export async function handleStatus(ctx: MsgContext): Promise<void> {
     fetchExpenses(groupId),
   ]);
 
-  const inviteCode = (await ctx.group.getState("splitpay_invite_code")) as string | null;
+  const inviteCode = extractState(await ctx.group.getState("splitpay_invite_code"));
   const unsettled = expenses.flatMap((e) => e.splits.filter((s) => !s.settled));
   const totalOwed = unsettled.reduce((sum, s) => sum + s.amount, 0) / 2;
 
@@ -485,7 +504,7 @@ export async function handleSettle(ctx: MsgContext): Promise<void> {
 }
 
 export async function handlePaymentComplete(ctx: PaymentContext): Promise<void> {
-  const groupId = (await ctx.group.getState("splitpay_group_id")) as string | null;
+  const groupId = extractState(await ctx.group.getState("splitpay_group_id"));
   if (!groupId) return;
 
   const { from, to, amount, token } = ctx.raw;
