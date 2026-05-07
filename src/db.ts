@@ -124,7 +124,7 @@ export async function fetchExpenses(groupId: string): Promise<Expense[]> {
 
 export async function resolveInviteCode(
   code: string
-): Promise<{ groupId: string; groupName: string } | null> {
+): Promise<{ groupId: string; groupName: string; inviteCode: string } | null> {
   try {
     const { data } = await db()
       .from("invite_codes")
@@ -136,8 +136,9 @@ export async function resolveInviteCode(
     // App stores { id, name, creator, ... }; prefer that over legacy { groupId, groupName }
     const groupId = (info.id ?? info.groupId) as string | undefined;
     const groupName = (info.name ?? info.groupName ?? "Unknown Group") as string;
+    const inviteCode = (info.inviteCode ?? code.toUpperCase()) as string;
     if (!groupId) return null;
-    return { groupId, groupName };
+    return { groupId, groupName, inviteCode };
   } catch {
     return null;
   }

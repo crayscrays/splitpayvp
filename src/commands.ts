@@ -141,6 +141,7 @@ export async function handleLink(args: string, ctx: MsgContext): Promise<void> {
     return;
   }
 
+  await publishGroup({ id: info.groupId, name: info.groupName, avatar: "", inviteCode: info.inviteCode });
   await ctx.group.setState("splitpay_group_id", info.groupId);
   await ctx.reply(`Linked to "${info.groupName}". Type /add to start tracking expenses.`);
 }
