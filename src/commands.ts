@@ -293,26 +293,21 @@ export async function handleAdd(args: string, ctx: MsgContext): Promise<void> {
       return;
     }
 
-    // Sender + mentioned users (deduped)
+    // Only the mentioned users are in the split (sender is the payer, not a recipient)
     const walletsSeen = new Set<string>();
     splitMembers = [];
 
-    const addToSplit = (wallet: string, displayName: string, avatar: string) => {
-      const key = wallet.toLowerCase();
-      if (walletsSeen.has(key)) return;
-      walletsSeen.add(key);
-      const existing = allMembers.find((m) => m.walletAddress.toLowerCase() === key);
-      splitMembers.push(existing ?? { walletAddress: wallet, displayName, avatar, roles: [] });
-    };
-
-    addToSplit(ctx.sender.wallet, ctx.sender.displayName, ctx.sender.avatar ?? "");
     for (const name of mentionedNames) {
       const cm = chatMembers.find(
         (m) =>
           (m.displayName || "").toLowerCase() === name ||
           m.walletAddress.toLowerCase() === name
       )!;
-      addToSplit(cm.walletAddress, cm.displayName, cm.avatar ?? "");
+      const key = cm.walletAddress.toLowerCase();
+      if (walletsSeen.has(key)) continue;
+      walletsSeen.add(key);
+      const existing = allMembers.find((m) => m.walletAddress.toLowerCase() === key);
+      splitMembers.push(existing ?? { walletAddress: cm.walletAddress, displayName: cm.displayName, avatar: cm.avatar ?? "", roles: [] });
     }
   } else {
     splitMembers = allMembers;
@@ -324,11 +319,18 @@ export async function handleAdd(args: string, ctx: MsgContext): Promise<void> {
   }
 
   const paidBy = ctx.sender.wallet;
-  const amounts = splitEvenly(amount, splitMembers.length);
-  const splits = splitMembers.map((m, i) => ({
+  const others = splitMembers.filter((m) => m.walletAddress.toLowerCase() !== paidBy.toLowerCase());
+
+  if (others.length === 0) {
+    await ctx.reply("You're the only member. Add others with /join before splitting.");
+    return;
+  }
+
+  const perPerson = splitEvenly(amount, splitMembers.length)[0];
+  const splits = others.map((m) => ({
     wallet: m.walletAddress,
-    amount: amounts[i],
-    settled: m.walletAddress.toLowerCase() === paidBy.toLowerCase(),
+    amount: perPerson,
+    settled: false,
   }));
 
   await publishExpense({
@@ -342,19 +344,15 @@ export async function handleAdd(args: string, ctx: MsgContext): Promise<void> {
     createdAt: new Date().toISOString(),
   } as Expense);
 
-  const others = splitMembers.filter((m) => m.walletAddress.toLowerCase() !== paidBy.toLowerCase());
-  const perPerson = amounts[0];
+  await ctx.reply(`${title}: ${formatUsdc(amount)} paid by you. Each person owes you ${formatUsdc(perPerson)} — ${others.map((m) => m.displayName || shortAddr(m.walletAddress)).join(", ")}.`);
 
   await ctx.replyCard({
     title,
     subtitle: `${formatUsdc(amount)} paid by you · ${formatUsdc(perPerson)} each`,
     fields: [
       {
-        label: others.length > 0 ? "Each person owes you" : "Split with",
-        value:
-          others.length > 0
-            ? `${formatUsdc(perPerson)} — ${others.map((m) => m.displayName || shortAddr(m.walletAddress)).join(", ")}`
-            : "just you",
+        label: "Each person owes you",
+        value: `${formatUsdc(perPerson)} — ${others.map((m) => m.displayName || shortAddr(m.walletAddress)).join(", ")}`,
       },
     ],
     actions: [],
