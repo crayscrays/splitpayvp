@@ -57,7 +57,7 @@ export async function publishGroup(group: {
 
 export async function fetchGroupName(groupId: string): Promise<string | null> {
   try {
-    const { data, error } = await db().from("groups").select("name").eq("id", groupId).single();
+    const { data, error } = await db().from("groups").select("name").eq("id", groupId).maybeSingle();
     if (error) { console.error("[db] fetchGroupName error:", error.message); return null; }
     return (data as { name: string } | null)?.name ?? null;
   } catch (e) { console.error("[db] fetchGroupName threw:", e); return null; }
