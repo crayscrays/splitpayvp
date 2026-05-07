@@ -64,8 +64,8 @@ async function adaptSlashCtx(ctx: SlashCommandContext): Promise<MessageContext> 
       displayName: senderMember?.displayName ?? ctx.senderWallet.slice(0, 8),
       avatar: senderMember?.avatar ?? "",
     },
-    reply: (content: string) => ctx.sendMessage(content),
-    replyCard: (card: unknown) => ctx.sendCard(card as never),
+    reply: (content: string) => { ctx.reply(content); return Promise.resolve(); },
+    replyCard: (card: unknown) => { ctx.replyCard(card as never); return Promise.resolve(); },
   } as unknown as MessageContext;
 }
 
