@@ -44,15 +44,13 @@ export async function publishGroup(group: {
   avatar: string;
   inviteCode: string;
 }): Promise<void> {
-  try {
-    const { error } = await db()
-      .from("groups")
-      .upsert(
-        { id: group.id, name: group.name, avatar: group.avatar, invite_code: group.inviteCode },
-        { onConflict: "id" }
-      );
-    if (error) console.error("[db] publishGroup error:", error.message);
-  } catch (e) { console.error("[db] publishGroup threw:", e); }
+  const { error } = await db()
+    .from("groups")
+    .upsert(
+      { id: group.id, name: group.name, avatar: group.avatar, invite_code: group.inviteCode },
+      { onConflict: "id" }
+    );
+  if (error) throw new Error(error.message);
 }
 
 export async function fetchGroupName(groupId: string): Promise<string | null> {
@@ -64,21 +62,19 @@ export async function fetchGroupName(groupId: string): Promise<string | null> {
 }
 
 export async function publishMember(groupId: string, member: GroupMember): Promise<void> {
-  try {
-    const { error } = await db()
-      .from("group_members")
-      .upsert(
-        {
-          group_id: groupId,
-          wallet_address: member.walletAddress,
-          display_name: member.displayName ?? "",
-          avatar: member.avatar ?? "",
-          roles: member.roles ?? [],
-        },
-        { onConflict: "group_id,wallet_address" }
-      );
-    if (error) console.error("[db] publishMember error:", error.message);
-  } catch (e) { console.error("[db] publishMember threw:", e); }
+  const { error } = await db()
+    .from("group_members")
+    .upsert(
+      {
+        group_id: groupId,
+        wallet_address: member.walletAddress,
+        display_name: member.displayName ?? "",
+        avatar: member.avatar ?? "",
+        roles: member.roles ?? [],
+      },
+      { onConflict: "group_id,wallet_address" }
+    );
+  if (error) throw new Error(error.message);
 }
 
 export async function fetchMembers(groupId: string): Promise<GroupMember[]> {
@@ -145,10 +141,8 @@ export async function resolveInviteCode(
 }
 
 export async function publishInviteCode(code: string, info: object): Promise<void> {
-  try {
-    const { error } = await db()
-      .from("invite_codes")
-      .upsert({ code: code.toUpperCase(), data: info }, { onConflict: "code" });
-    if (error) console.error("[db] publishInviteCode error:", error.message);
-  } catch (e) { console.error("[db] publishInviteCode threw:", e); }
+  const { error } = await db()
+    .from("invite_codes")
+    .upsert({ code: code.toUpperCase(), data: info }, { onConflict: "code" });
+  if (error) throw new Error(error.message);
 }
