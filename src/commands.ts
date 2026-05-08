@@ -326,7 +326,8 @@ export async function handleAdd(args: string, ctx: MsgContext): Promise<void> {
     return;
   }
 
-  const perPerson = splitEvenly(amount, splitMembers.length)[0];
+  const totalPeople = others.length + 1; // others + payer
+  const perPerson = splitEvenly(amount, totalPeople)[0];
   const splits = others.map((m) => ({
     wallet: m.walletAddress,
     amount: perPerson,

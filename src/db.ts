@@ -95,15 +95,13 @@ export async function fetchMembers(groupId: string): Promise<GroupMember[]> {
 }
 
 export async function publishExpense(expense: Expense): Promise<void> {
-  try {
-    const { error } = await db().from("group_expenses").upsert({
-      id: expense.id,
-      group_id: expense.groupId,
-      data: expense,
-      updated_at: new Date().toISOString(),
-    });
-    if (error) console.error("[db] publishExpense error:", error.message);
-  } catch (e) { console.error("[db] publishExpense threw:", e); }
+  const { error } = await db().from("group_expenses").upsert({
+    id: expense.id,
+    group_id: expense.groupId,
+    data: expense,
+    updated_at: new Date().toISOString(),
+  });
+  if (error) throw new Error(error.message);
 }
 
 export async function fetchExpenses(groupId: string): Promise<Expense[]> {
