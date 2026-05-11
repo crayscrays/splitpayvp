@@ -25,10 +25,24 @@ import type {
   MessageContext as MsgContext,
   CardField,
   CardAction,
+  CardMessage,
 } from "@0xchat/agent-sdk";
 type PaymentContext = MsgContext;
 
 // ---- Helpers ----
+
+// SDK types are outdated — real API requires type:"app_card" on every card
+// and uses "transaction" / "action" instead of "payment" / "callback".
+function appCard(c: CardMessage): any {
+  return {
+    type: "app_card",
+    ...c,
+    actions: c.actions?.map((a) => ({
+      ...a,
+      type: a.type === "payment" ? "transaction" : a.type === "callback" ? "action" : a.type,
+    })),
+  };
+}
 
 function extractState(raw: unknown): string | null {
   if (!raw) return null;
@@ -127,7 +141,7 @@ export async function handleCreate(args: string, ctx: MsgContext): Promise<void>
 
   await ctx.reply(`Group "${name}" created!\nInvite code: ${inviteCode}\n\nShare the code with others (/link ${inviteCode}) or add them with /join @username.`);
 
-  await ctx.replyCard({
+  await ctx.replyCard(appCard({
     title: name,
     subtitle: "Group created — share the invite code below",
     fields: [
@@ -135,7 +149,7 @@ export async function handleCreate(args: string, ctx: MsgContext): Promise<void>
       { label: "Add members", value: "/join @username or share code" },
     ],
     actions: [],
-  });
+  }));
 }
 
 export async function handleLink(args: string, ctx: MsgContext): Promise<void> {
@@ -240,7 +254,7 @@ export async function handleStatus(ctx: MsgContext): Promise<void> {
   ];
   if (inviteCode) fields.push({ label: "Invite Code", value: inviteCode });
 
-  await ctx.replyCard({ title: name, subtitle: `${members.length} members`, fields, actions: [] });
+  await ctx.replyCard(appCard({ title: name, subtitle: `${members.length} members`, fields, actions: [] }));
 }
 
 export async function handleAdd(args: string, ctx: MsgContext): Promise<void> {
@@ -347,7 +361,7 @@ export async function handleAdd(args: string, ctx: MsgContext): Promise<void> {
 
   await ctx.reply(`${title}: ${formatUsdc(amount)} paid by you. Each person owes you ${formatUsdc(perPerson)} — ${others.map((m) => m.displayName || shortAddr(m.walletAddress)).join(", ")}.`);
 
-  await ctx.replyCard({
+  await ctx.replyCard(appCard({
     title,
     subtitle: `${formatUsdc(amount)} paid by you · ${formatUsdc(perPerson)} each`,
     fields: [
@@ -357,7 +371,7 @@ export async function handleAdd(args: string, ctx: MsgContext): Promise<void> {
       },
     ],
     actions: [],
-  });
+  }));
 }
 
 export async function handleExpenses(args: string, ctx: MsgContext): Promise<void> {
@@ -387,12 +401,12 @@ export async function handleExpenses(args: string, ctx: MsgContext): Promise<voi
     };
   });
 
-  await ctx.replyCard({
+  await ctx.replyCard(appCard({
     title: `Last ${recent.length} Expense${recent.length !== 1 ? "s" : ""}`,
     subtitle: expenses.length > limit ? `of ${expenses.length} total` : undefined,
     fields,
     actions: [],
-  });
+  }));
 }
 
 export async function handleBalance(ctx: MsgContext): Promise<void> {
@@ -419,12 +433,12 @@ export async function handleBalance(ctx: MsgContext): Promise<void> {
       value: amount > 0 ? `+${formatUsdc(amount)}` : `−${formatUsdc(Math.abs(amount))}`,
     }));
 
-  await ctx.replyCard({
+  await ctx.replyCard(appCard({
     title: "Balances",
     subtitle: "+ means owed · − means owes",
     fields,
     actions: [],
-  });
+  }));
 }
 
 export async function handleDebts(ctx: MsgContext): Promise<void> {
@@ -448,12 +462,12 @@ export async function handleDebts(ctx: MsgContext): Promise<void> {
     value: formatUsdc(d.amount),
   }));
 
-  await ctx.replyCard({
+  await ctx.replyCard(appCard({
     title: "Who Owes Who",
     subtitle: `${debts.length} payment${debts.length !== 1 ? "s" : ""} to clear everything`,
     fields,
     actions: [],
-  });
+  }));
 }
 
 export async function handleSettle(ctx: MsgContext): Promise<void> {
@@ -494,12 +508,12 @@ export async function handleSettle(ctx: MsgContext): Promise<void> {
     },
   }));
 
-  await ctx.replyCard({
+  await ctx.replyCard(appCard({
     title: `You owe ${formatUsdc(totalOwed)}`,
     subtitle: `${myDebts.length} payment${myDebts.length !== 1 ? "s" : ""} to settle up`,
     fields,
     actions,
-  });
+  }));
 }
 
 export async function handlePaymentComplete(ctx: PaymentContext): Promise<void> {
