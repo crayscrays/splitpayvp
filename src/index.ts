@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { createAgent } from "@0xchat/agent-sdk";
-import type { SlashCommandDefinition } from "@0xchat/agent-sdk";
+import type { SlashCommandDefinition, CardMessage } from "@0xchat/agent-sdk";
 import {
   handleHelp,
   handleCreate,
@@ -64,8 +64,8 @@ async function adaptSlashCtx(ctx: SlashCommandContext): Promise<MessageContext> 
       displayName: senderMember?.displayName ?? ctx.senderWallet.slice(0, 8),
       avatar: senderMember?.avatar ?? "",
     },
-    reply: (content: string) => ctx.reply(content),
-    replyCard: (card: unknown) => ctx.replyCard(card as never),
+    reply: (content: string) => ctx.sendMessage(content),
+    replyCard: (card: unknown) => ctx.sendCard(card as CardMessage),
   } as unknown as MessageContext;
 }
 
