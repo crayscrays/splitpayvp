@@ -37,10 +37,13 @@ function appCard(c: CardMessage): any {
   return {
     type: "app_card",
     ...c,
-    actions: c.actions?.map((a) => ({
-      ...a,
-      type: a.type === "payment" ? "transaction" : a.type === "callback" ? "action" : a.type,
-    })),
+    actions: c.actions?.map((a) => {
+      const type = a.type === "payment" ? "transaction" : a.type === "callback" ? "action" : a.type;
+      const { paymentAction, ...rest } = a as any;
+      const action: any = { ...rest, type };
+      if (type === "transaction" && paymentAction) action.transaction = paymentAction;
+      return action;
+    }),
   };
 }
 
