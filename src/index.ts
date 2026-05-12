@@ -124,7 +124,7 @@ agent.on("message", async (ctx: MessageContext) => {
   }
 });
 
-agent.on("payment_complete", async (ctx: PaymentContext) => {
+agent.on("card_action", async (ctx: PaymentContext) => {
   await handlePaymentComplete(ctx);
 });
 

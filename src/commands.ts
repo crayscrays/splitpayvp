@@ -31,17 +31,17 @@ type PaymentContext = MsgContext;
 
 // ---- Helpers ----
 
-// SDK types are outdated — real API requires type:"app_card" on every card
-// and uses "transaction" / "action" instead of "payment" / "callback".
+// Real API requires type:"app_card" on every card and uses "transaction" / "action"
+// instead of SDK's "wallet_action" / "callback".
 function appCard(c: CardMessage): any {
   return {
     type: "app_card",
     ...c,
     actions: c.actions?.map((a) => {
-      const type = a.type === "payment" ? "transaction" : a.type === "callback" ? "action" : a.type;
-      const { paymentAction, ...rest } = a as any;
+      const type = a.kind === "wallet_action" ? "transaction" : a.kind === "callback" ? "action" : a.kind;
+      const { tx, ...rest } = a as any;
       const action: any = { ...rest, type };
-      if (type === "transaction" && paymentAction) action.transaction = paymentAction;
+      if (type === "transaction" && tx) action.transaction = tx;
       return action;
     }),
   };
@@ -501,13 +501,12 @@ export async function handleSettle(ctx: MsgContext): Promise<void> {
   const actions: CardAction[] = myDebts.map((d) => ({
     id: `pay_${d.to.slice(2, 8)}`,
     label: `Pay ${formatUsdc(d.amount)} to ${shortName(d.to, members)}`,
-    type: "payment",
+    kind: "wallet_action",
     style: "primary",
-    paymentAction: {
+    tx: {
       to: d.to,
       token: "USDC",
       amount: d.amount.toFixed(2),
-      memo: "SplitPay settlement",
     },
   }));
 
@@ -523,7 +522,9 @@ export async function handlePaymentComplete(ctx: PaymentContext): Promise<void> 
   const groupId = extractState(await ctx.group.getState("splitpay_group_id"));
   if (!groupId) return;
 
-  const { from, to, amount, token } = ctx.raw;
+  const from: string = ctx.raw?.senderWallet;
+  const { to, amount, token } = ctx.raw?.actionPayload ?? {};
+  const txHash: string | undefined = ctx.raw?.result?.txHash;
   if (token !== "USDC") return;
 
   const paid = parseFloat(amount);
@@ -545,7 +546,7 @@ export async function handlePaymentComplete(ctx: PaymentContext): Promise<void> 
     for (const split of expense.splits) {
       if (split.wallet.toLowerCase() !== fromLow || split.settled || remaining < 0.01) continue;
       split.settled = true;
-      split.txHash = `${from}_${Date.now()}`;
+      split.txHash = txHash ?? `${from}_${Date.now()}`;
       split.settledAt = new Date().toISOString();
       remaining = Math.round((remaining - split.amount) * 100) / 100;
       settledCount++;

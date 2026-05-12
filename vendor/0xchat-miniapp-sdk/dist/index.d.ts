@@ -53,20 +53,27 @@ interface RemovedEvent {
     group_id: string;
 }
 type CardActionStyle = "primary" | "secondary" | "danger";
-type CardActionType = "callback" | "payment";
-interface CardPaymentAction {
-    to: string;
-    token: string;
-    amount: string;
-    memo?: string;
-}
+type CardActionKind = "callback" | "wallet_action" | "link" | "open_app";
 interface CardAction {
     id: string;
     label: string;
     style: CardActionStyle;
-    type: CardActionType;
+    kind: CardActionKind;
     payload?: any;
-    paymentAction?: CardPaymentAction;
+    tx?: { to: string; token?: string; amount: string; decimals?: number };
+    url?: string;
+    appSlug?: string;
+}
+interface CardActionEvent {
+    event: "card_action";
+    actionId: string;
+    actionKind: CardActionKind;
+    actionPayload?: any;
+    messageId: number;
+    result?: { txHash?: string };
+    senderWallet: string;
+    groupId: string;
+    channelId: string;
 }
 interface CardField {
     label: string;
@@ -78,13 +85,22 @@ interface CardMemberAction {
     style?: CardActionStyle;
     payload?: any;
 }
+interface PaymentRequestCard {
+    type: "payment_request";
+    amount: string;
+    symbol: string;
+    tokenAddress?: string;
+    requesterAddress: string;
+    targetWallet?: string;
+}
 interface CardMessage {
     title: string;
     subtitle?: string;
-    image?: string;
+    imageUrl?: string;
     fields?: CardField[];
     actions?: CardAction[];
     memberActions?: CardMemberAction[];
+    metadata?: { targetWallet?: string };
 }
 interface CommandOption {
     name: string;
@@ -113,13 +129,14 @@ interface SlashCommandPayload {
     channelId: number;
     senderWallet: string;
     messageId: number;
+    placeholderMessageId?: number;
     createdAt: string;
 }
 interface SlashCommandEvent {
     event: "slash_command";
     payload: SlashCommandPayload;
 }
-type AgentEventName = "message" | "slash_command" | "action" | "joined" | "removed" | "payment_complete";
+type AgentEventName = "message" | "slash_command" | "action" | "joined" | "removed" | "card_action";
 type AgentEventHandler = (ctx: any) => void | Promise<void>;
 interface AppBridgeConfig {
     appId: string;
@@ -219,6 +236,7 @@ declare class ApiClient {
     registerCommands(commands: SlashCommandDefinition[]): Promise<any>;
     sendMessage(groupId: string | number, channelId: string | number, content: string): Promise<any>;
     sendCard(groupId: string | number, channelId: string | number, card: CardMessage): Promise<any>;
+    updateMessage(messageId: number, update: { content?: string; card?: CardMessage }): Promise<any>;
     getGroupMembers(groupId: string | number): Promise<GroupMember[]>;
     getState(groupId: string | number, key: string): Promise<any>;
     setState(groupId: string | number, key: string, value: any): Promise<any>;
@@ -255,6 +273,7 @@ declare class SlashCommandContext {
     groupId: number;
     channelId: number;
     senderWallet: string;
+    placeholderMessageId?: number;
     raw: SlashCommandEvent;
     private _pendingReply;
     constructor(api: ApiClient, event: SlashCommandEvent);
@@ -263,6 +282,9 @@ declare class SlashCommandContext {
     resolveUser(mention: string): ResolvedUser | undefined;
     sendMessage(content: string): Promise<any>;
     sendCard(card: CardMessage): Promise<any>;
+    sendPaymentRequest(card: PaymentRequestCard): Promise<any>;
+    defer(): Promise<any>;
+    updateMessage(messageId: number, update: { content?: string; card?: CardMessage }): Promise<any>;
     group: {
         getMembers: () => Promise<GroupMember[]>;
         getState: (key: string) => Promise<any>;
@@ -426,4 +448,4 @@ declare class MockAppBridge {
 }
 declare function createMockBridge(config: MockBridgeConfig): MockAppBridge;
 
-export { type ActionEvent, type AddBotParams, Agent, type AgentConfig, type AgentEventHandler, type AgentEventName, AppBridge, type AppBridgeConfig, type AppCard, type AppCardAction, type AppCardField, type BotDeployment, BridgeError, type BridgeMessage, BridgeProvider, type BridgeResponse, type CardAction, type CardActionStyle, type CardActionType, type CardField, type CardMemberAction, type CardMessage, type CardPaymentAction, type CommandOption, type Contact, type GroupMember, type GroupSummary, type JoinedEvent, MessageContext, MockAppBridge, type MockBridgeConfig, type ReadContractParams, type RemovedEvent, type ResolvedUser, type SendTransactionParams, type ShareCardParams, type ShareCardToGroupParams, type SignMessageParams, SlashCommandContext, type SlashCommandDefinition, type SlashCommandEvent, type SlashCommandPayload, type UserProfile, type WebhookEvent, type WebhookSender, createAgent, createAppBridge, createMockBridge };
+export { type ActionEvent, type AddBotParams, Agent, type AgentConfig, type AgentEventHandler, type AgentEventName, AppBridge, type AppBridgeConfig, type AppCard, type AppCardAction, type AppCardField, type BotDeployment, BridgeError, type BridgeMessage, BridgeProvider, type BridgeResponse, type CardAction, type CardActionEvent, type CardActionKind, type CardActionStyle, type CardField, type CardMemberAction, type CardMessage, type CommandOption, type Contact, type GroupMember, type GroupSummary, type JoinedEvent, MessageContext, MockAppBridge, type MockBridgeConfig, type PaymentRequestCard, type ReadContractParams, type RemovedEvent, type ResolvedUser, type SendTransactionParams, type ShareCardParams, type ShareCardToGroupParams, type SignMessageParams, SlashCommandContext, type SlashCommandDefinition, type SlashCommandEvent, type SlashCommandPayload, type UserProfile, type WebhookEvent, type WebhookSender, createAgent, createAppBridge, createMockBridge };
