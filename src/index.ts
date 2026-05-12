@@ -71,8 +71,8 @@ async function adaptSlashCtx(ctx: SlashCommandContext): Promise<MessageContext> 
       body: JSON.stringify({
         groupId: Number(ctx.groupId),
         channelId: Number(ctx.channelId),
-        card,
         contentType: "payment_request",
+        ...(card as object),
       }),
     }),
   } as unknown as MessageContext;
