@@ -66,6 +66,7 @@ async function adaptSlashCtx(ctx: SlashCommandContext): Promise<MessageContext> 
     },
     reply: (content: string) => ctx.sendMessage(content),
     replyCard: (card: unknown) => ctx.sendCard(card as CardMessage),
+    sendPaymentRequest: (card: unknown) => ctx.sendPaymentRequest(card as any),
   } as unknown as MessageContext;
 }
 

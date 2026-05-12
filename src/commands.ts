@@ -492,30 +492,33 @@ export async function handleSettle(ctx: MsgContext): Promise<void> {
   }
 
   const totalOwed = myDebts.reduce((s, d) => s + d.amount, 0);
+  const sendPaymentRequest = (ctx as any).sendPaymentRequest?.bind(ctx);
 
-  const fields: CardField[] = myDebts.map((d) => ({
-    label: `→ ${shortName(d.to, members)}`,
-    value: formatUsdc(d.amount),
-  }));
-
-  const actions: CardAction[] = myDebts.map((d) => ({
-    id: `pay_${d.to.slice(2, 8)}`,
-    label: `Pay ${formatUsdc(d.amount)} to ${shortName(d.to, members)}`,
-    kind: "wallet_action",
-    style: "primary",
-    tx: {
-      to: d.to,
-      token: "USDC",
-      amount: d.amount.toFixed(2),
-    },
-  }));
-
-  await ctx.replyCard(appCard({
-    title: `You owe ${formatUsdc(totalOwed)}`,
-    subtitle: `${myDebts.length} payment${myDebts.length !== 1 ? "s" : ""} to settle up`,
-    fields,
-    actions,
-  }));
+  if (sendPaymentRequest) {
+    await ctx.reply(
+      `You owe ${formatUsdc(totalOwed)} total. Tap each card below to pay:`
+    );
+    for (const d of myDebts) {
+      await sendPaymentRequest({
+        type: "payment_request",
+        amount: d.amount.toFixed(2),
+        symbol: "USDC",
+        requesterAddress: d.to,
+        targetWallet: ctx.sender.wallet,
+      });
+    }
+  } else {
+    const fields: CardField[] = myDebts.map((d) => ({
+      label: `→ ${shortName(d.to, members)}`,
+      value: formatUsdc(d.amount),
+    }));
+    await ctx.replyCard(appCard({
+      title: `You owe ${formatUsdc(totalOwed)}`,
+      subtitle: `${myDebts.length} payment${myDebts.length !== 1 ? "s" : ""} to settle up`,
+      fields,
+      actions: [],
+    }));
+  }
 }
 
 export async function handlePaymentComplete(ctx: PaymentContext): Promise<void> {
@@ -523,7 +526,10 @@ export async function handlePaymentComplete(ctx: PaymentContext): Promise<void> 
   if (!groupId) return;
 
   const from: string = ctx.raw?.senderWallet;
-  const { to, amount, token } = ctx.raw?.actionPayload ?? {};
+  const payload = ctx.raw?.actionPayload ?? {};
+  const to: string = payload.to ?? payload.requesterAddress;
+  const amount: string = payload.amount;
+  const token: string = payload.token ?? payload.symbol;
   const txHash: string | undefined = ctx.raw?.result?.txHash;
   if (token !== "USDC") return;
 
