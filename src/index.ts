@@ -66,7 +66,15 @@ async function adaptSlashCtx(ctx: SlashCommandContext): Promise<MessageContext> 
     },
     reply: (content: string) => ctx.sendMessage(content),
     replyCard: (card: unknown) => ctx.sendCard(card as CardMessage),
-    sendPaymentRequest: (card: unknown) => ctx.sendPaymentRequest(card as any),
+    sendPaymentRequest: (card: unknown) => (ctx as any).api.fetch("/api/agent/send", {
+      method: "POST",
+      body: JSON.stringify({
+        groupId: Number(ctx.groupId),
+        channelId: Number(ctx.channelId),
+        card,
+        contentType: "payment_request",
+      }),
+    }),
   } as unknown as MessageContext;
 }
 
