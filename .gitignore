@@ -1,6 +1,7 @@
 node_modules
 dist
 !vendor/0xchat-miniapp-sdk/dist
+!vendor/bevo-agent-sdk/dist
 *.log
 .DS_Store
 .env
