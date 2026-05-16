@@ -6,10 +6,10 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsup",
     "start": "node dist/index.js",
-    "postinstall": "mkdir -p node_modules/@0xchat/agent-sdk/dist && cp vendor/0xchat-miniapp-sdk/dist/index.js node_modules/@0xchat/agent-sdk/dist/index.mjs && cp vendor/0xchat-miniapp-sdk/dist/index.cjs node_modules/@0xchat/agent-sdk/dist/index.js && cp vendor/0xchat-miniapp-sdk/dist/index.d.ts node_modules/@0xchat/agent-sdk/dist/index.d.ts"
+    "postinstall": "mkdir -p node_modules/@bevo/agent-sdk/dist && cp vendor/bevo-agent-sdk/dist/index.js node_modules/@bevo/agent-sdk/dist/index.js && cp vendor/bevo-agent-sdk/dist/index.cjs node_modules/@bevo/agent-sdk/dist/index.cjs && cp vendor/bevo-agent-sdk/dist/index.d.ts node_modules/@bevo/agent-sdk/dist/index.d.ts"
   },
   "dependencies": {
-    "@0xchat/agent-sdk": "github:crayscrays/0xchat-agent-sdk",
+    "@bevo/agent-sdk": "github:crayscrays/bevo-agent-sdk",
     "@supabase/supabase-js": "^2.104.1",
     "dotenv": "^16.4.5"
   },

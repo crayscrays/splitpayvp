@@ -24,28 +24,11 @@ import {
 import type {
   MessageContext as MsgContext,
   CardField,
-  CardAction,
   CardMessage,
-} from "@0xchat/agent-sdk";
+} from "@bevo/agent-sdk";
 type PaymentContext = MsgContext;
 
 // ---- Helpers ----
-
-// Real API requires type:"app_card" on every card and uses "transaction" / "action"
-// instead of SDK's "wallet_action" / "callback".
-function appCard(c: CardMessage): any {
-  return {
-    type: "app_card",
-    ...c,
-    actions: c.actions?.map((a) => {
-      const type = a.kind === "wallet_action" ? "transaction" : a.kind === "callback" ? "action" : a.kind;
-      const { tx, ...rest } = a as any;
-      const action: any = { ...rest, type };
-      if (type === "transaction" && tx) action.transaction = tx;
-      return action;
-    }),
-  };
-}
 
 function extractState(raw: unknown): string | null {
   if (!raw) return null;
@@ -144,7 +127,7 @@ export async function handleCreate(args: string, ctx: MsgContext): Promise<void>
 
   await ctx.reply(`Group "${name}" created!\nInvite code: ${inviteCode}\n\nShare the code with others (/link ${inviteCode}) or add them with /join @username.`);
 
-  await ctx.replyCard(appCard({
+  await ctx.replyCard({
     title: name,
     subtitle: "Group created — share the invite code below",
     fields: [
@@ -152,7 +135,7 @@ export async function handleCreate(args: string, ctx: MsgContext): Promise<void>
       { label: "Add members", value: "/join @username or share code" },
     ],
     actions: [],
-  }));
+  });
 }
 
 export async function handleLink(args: string, ctx: MsgContext): Promise<void> {
@@ -209,8 +192,7 @@ export async function handleJoin(args: string, ctx: MsgContext): Promise<void> {
 
   // Add @mentioned user
   const targetName = mentionMatch[1].toLowerCase();
-  const chatMembersRaw = await ctx.group.getMembers();
-  const chatMembers = Array.isArray(chatMembersRaw) ? chatMembersRaw : (chatMembersRaw as any)?.members ?? [];
+  const chatMembers = await ctx.group.getMembers();
   const target = chatMembers.find(
     (m) =>
       (m.displayName || "").toLowerCase() === targetName ||
@@ -257,7 +239,7 @@ export async function handleStatus(ctx: MsgContext): Promise<void> {
   ];
   if (inviteCode) fields.push({ label: "Invite Code", value: inviteCode });
 
-  await ctx.replyCard(appCard({ title: name, subtitle: `${members.length} members`, fields, actions: [] }));
+  await ctx.replyCard({ title: name, subtitle: `${members.length} members`, fields, actions: [] });
 }
 
 export async function handleAdd(args: string, ctx: MsgContext): Promise<void> {
@@ -294,8 +276,7 @@ export async function handleAdd(args: string, ctx: MsgContext): Promise<void> {
   let splitMembers: GroupMember[];
 
   if (mentionedNames.length > 0) {
-    const chatMembersRaw = await ctx.group.getMembers();
-    const chatMembers = Array.isArray(chatMembersRaw) ? chatMembersRaw : (chatMembersRaw as any)?.members ?? [];
+    const chatMembers = await ctx.group.getMembers();
 
     const unknownNames = mentionedNames.filter(
       (name) =>
@@ -364,7 +345,7 @@ export async function handleAdd(args: string, ctx: MsgContext): Promise<void> {
 
   await ctx.reply(`${title}: ${formatUsdc(amount)} paid by you. Each person owes you ${formatUsdc(perPerson)} — ${others.map((m) => m.displayName || shortAddr(m.walletAddress)).join(", ")}.`);
 
-  await ctx.replyCard(appCard({
+  await ctx.replyCard({
     title,
     subtitle: `${formatUsdc(amount)} paid by you · ${formatUsdc(perPerson)} each`,
     fields: [
@@ -374,7 +355,7 @@ export async function handleAdd(args: string, ctx: MsgContext): Promise<void> {
       },
     ],
     actions: [],
-  }));
+  });
 }
 
 export async function handleExpenses(args: string, ctx: MsgContext): Promise<void> {
@@ -404,12 +385,12 @@ export async function handleExpenses(args: string, ctx: MsgContext): Promise<voi
     };
   });
 
-  await ctx.replyCard(appCard({
+  await ctx.replyCard({
     title: `Last ${recent.length} Expense${recent.length !== 1 ? "s" : ""}`,
     subtitle: expenses.length > limit ? `of ${expenses.length} total` : undefined,
     fields,
     actions: [],
-  }));
+  });
 }
 
 export async function handleBalance(ctx: MsgContext): Promise<void> {
@@ -436,12 +417,12 @@ export async function handleBalance(ctx: MsgContext): Promise<void> {
       value: amount > 0 ? `+${formatUsdc(amount)}` : `−${formatUsdc(Math.abs(amount))}`,
     }));
 
-  await ctx.replyCard(appCard({
+  await ctx.replyCard({
     title: "Balances",
     subtitle: "+ means owed · − means owes",
     fields,
     actions: [],
-  }));
+  });
 }
 
 export async function handleDebts(ctx: MsgContext): Promise<void> {
@@ -465,12 +446,12 @@ export async function handleDebts(ctx: MsgContext): Promise<void> {
     value: formatUsdc(d.amount),
   }));
 
-  await ctx.replyCard(appCard({
+  await ctx.replyCard({
     title: "Who Owes Who",
     subtitle: `${debts.length} payment${debts.length !== 1 ? "s" : ""} to clear everything`,
     fields,
     actions: [],
-  }));
+  });
 }
 
 export async function handleSettle(ctx: MsgContext): Promise<void> {
@@ -504,7 +485,6 @@ export async function handleSettle(ctx: MsgContext): Promise<void> {
         amount: d.amount.toFixed(2),
         symbol: "USDC",
         requesterAddress: d.to,
-        targetWallet: ctx.sender.wallet,
       });
     }
   } else {
@@ -512,12 +492,12 @@ export async function handleSettle(ctx: MsgContext): Promise<void> {
       label: `→ ${shortName(d.to, members)}`,
       value: formatUsdc(d.amount),
     }));
-    await ctx.replyCard(appCard({
+    await ctx.replyCard({
       title: `You owe ${formatUsdc(totalOwed)}`,
       subtitle: `${myDebts.length} payment${myDebts.length !== 1 ? "s" : ""} to settle up`,
       fields,
       actions: [],
-    }));
+    });
   }
 }
 
@@ -525,12 +505,13 @@ export async function handlePaymentComplete(ctx: PaymentContext): Promise<void> 
   const groupId = extractState(await ctx.group.getState("splitpay_group_id"));
   if (!groupId) return;
 
-  const from: string = ctx.raw?.senderWallet;
-  const payload = ctx.raw?.actionPayload ?? {};
-  const to: string = payload.to ?? payload.requesterAddress;
-  const amount: string = payload.amount;
-  const token: string = payload.token ?? payload.symbol;
-  const txHash: string | undefined = ctx.raw?.result?.txHash;
+  const from: string = ctx.sender.wallet;
+  const rawPayload = ctx.raw?.payload ?? {};
+  const actionPayload: Record<string, unknown> = rawPayload.actionPayload ?? {};
+  const to = (actionPayload.to ?? actionPayload.requesterAddress) as string;
+  const amount = actionPayload.amount as string;
+  const token = (actionPayload.token ?? actionPayload.symbol) as string;
+  const txHash: string | undefined = rawPayload.result?.txHash;
   if (token !== "USDC") return;
 
   const paid = parseFloat(amount);

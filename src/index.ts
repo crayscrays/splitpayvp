@@ -1,6 +1,6 @@
 import "dotenv/config";
-import { createAgent } from "@0xchat/agent-sdk";
-import type { SlashCommandDefinition, CardMessage } from "@0xchat/agent-sdk";
+import { createAgent } from "@bevo/agent-sdk";
+import type { SlashCommandDefinition, CardMessage, PaymentRequestCard } from "@bevo/agent-sdk";
 import {
   handleHelp,
   handleCreate,
@@ -14,7 +14,7 @@ import {
   handleSettle,
   handlePaymentComplete,
 } from "./commands.js";
-import type { MessageContext, SlashCommandContext } from "@0xchat/agent-sdk";
+import type { MessageContext, SlashCommandContext } from "@bevo/agent-sdk";
 type PaymentContext = MessageContext;
 
 const COMMANDS: SlashCommandDefinition[] = [
@@ -36,7 +36,6 @@ const COMMANDS: SlashCommandDefinition[] = [
 const agent = createAgent({
   apiKey: process.env.AGENT_API_KEY!,
   webhookSecret: process.env.OXCHAT_WEBHOOK_SECRET!,
-  baseUrl: "https://0xchat.cresign.xyz",
 });
 
 agent.on("joined", async (ctx) => {
@@ -51,8 +50,7 @@ agent.on("removed", async (_ctx) => {
 
 // Adapt a SlashCommandContext into the MessageContext shape the handlers expect
 async function adaptSlashCtx(ctx: SlashCommandContext): Promise<MessageContext> {
-  const membersRaw = await ctx.group.getMembers().catch(() => []);
-  const members = Array.isArray(membersRaw) ? membersRaw : (membersRaw as any)?.members ?? [];
+  const members = await ctx.group.getMembers().catch(() => []);
   const senderMember = members.find(
     (m) => m.walletAddress.toLowerCase() === ctx.senderWallet.toLowerCase()
   );
@@ -64,17 +62,9 @@ async function adaptSlashCtx(ctx: SlashCommandContext): Promise<MessageContext> 
       displayName: senderMember?.displayName ?? ctx.senderWallet.slice(0, 8),
       avatar: senderMember?.avatar ?? "",
     },
-    reply: (content: string) => ctx.sendMessage(content),
-    replyCard: (card: unknown) => ctx.sendCard(card as CardMessage),
-    sendPaymentRequest: (card: unknown) => (ctx as any).api.fetch("/api/agent/send", {
-      method: "POST",
-      body: JSON.stringify({
-        groupId: Number(ctx.groupId),
-        channelId: Number(ctx.channelId),
-        contentType: "payment_request",
-        ...(card as object),
-      }),
-    }),
+    reply: (content: string) => Promise.resolve(ctx.reply(content)),
+    replyCard: (card: unknown) => Promise.resolve(ctx.replyCard(card as CardMessage)),
+    sendPaymentRequest: (card: unknown) => ctx.sendPaymentRequest(card as PaymentRequestCard),
   } as unknown as MessageContext;
 }
 
@@ -101,6 +91,7 @@ agent.on("slash_command", async (ctx: SlashCommandContext) => {
     console.log(`[slash_command] /${ctx.commandName} handled ok`);
   } catch (err) {
     console.error(`[slash_command] /${ctx.commandName} error:`, err);
+    ctx.reply("Something went wrong. Please try again.");
   }
 });
 
@@ -142,7 +133,7 @@ agent.listen(PORT);
 console.log(`SplitPay agent listening on port ${PORT}`);
 console.log(`  API key: ${process.env.AGENT_API_KEY ? "set" : "MISSING"}`);
 console.log(`  Webhook secret: ${process.env.OXCHAT_WEBHOOK_SECRET ? "set" : "not set (signature checks skipped)"}`);
-console.log(`  Base URL: https://0xchat.cresign.xyz`);
+console.log(`  Base URL: https://api.bevo.com`);
 console.log(`  Supabase URL: ${process.env.SUPABASE_URL ? process.env.SUPABASE_URL : "MISSING"}`);
 console.log(`  Supabase key: ${process.env.SUPABASE_ANON_KEY ? "set" : "MISSING"}`);
 
