@@ -51,7 +51,8 @@ agent.on("removed", async (_ctx) => {
 
 // Adapt a SlashCommandContext into the MessageContext shape the handlers expect
 async function adaptSlashCtx(ctx: SlashCommandContext): Promise<MessageContext> {
-  const members = await ctx.group.getMembers().catch(() => []);
+  const raw = await ctx.group.getMembers().catch(() => null);
+  const members = Array.isArray(raw) ? raw : [];
   const senderMember = members.find(
     (m) => m.walletAddress.toLowerCase() === ctx.senderWallet.toLowerCase()
   );
