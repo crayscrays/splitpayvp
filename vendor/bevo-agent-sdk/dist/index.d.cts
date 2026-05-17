@@ -114,8 +114,7 @@ interface CardMessage {
 }
 /**
  * Sends a tappable "Requesting X ETH · Tap to pay" bubble into a group channel.
- * When the user pays, your webhook receives a `card_action` event with
- * `actionId: "pay"` and `result: { txHash }`.
+ * When the user pays, your webhook receives a `payment_completed` event.
  */
 interface PaymentRequestCard {
     type: "payment_request";
@@ -170,7 +169,22 @@ interface SlashCommandEvent {
     event: "slash_command";
     payload: SlashCommandPayload;
 }
-type AgentEventName = "message" | "slash_command" | "card_action" | "joined" | "removed";
+interface PaymentCompletedEvent {
+    event: "payment_completed";
+    payload: {
+        messageId: number;
+        groupId: number;
+        channelId: number;
+        /** Wallet address of the user who paid */
+        payerWallet: string;
+        requesterAddress: string | null;
+        amount: string | null;
+        tokenAddress: string | null;
+        completedAt: string;
+        txHash: string | null;
+    };
+}
+type AgentEventName = "message" | "slash_command" | "card_action" | "payment_completed" | "joined" | "removed";
 type AgentEventHandler = (ctx: any) => void | Promise<void>;
 
 declare class ApiClient {
@@ -263,6 +277,27 @@ declare class SlashCommandContext {
         type?: number;
     } | null;
 }
+declare class PaymentCompletedContext {
+    private api;
+    messageId: number;
+    groupId: number;
+    channelId: number;
+    payerWallet: string;
+    requesterAddress: string | null;
+    amount: string | null;
+    tokenAddress: string | null;
+    completedAt: string;
+    txHash: string | null;
+    raw: PaymentCompletedEvent;
+    constructor(api: ApiClient, event: PaymentCompletedEvent);
+    sendMessage(content: string): Promise<any>;
+    sendCard(card: CardMessage): Promise<any>;
+    group: {
+        getMembers: () => Promise<GroupMember[]>;
+        getState: (key: string) => Promise<any>;
+        setState: (key: string, value: any) => Promise<any>;
+    };
+}
 declare class Agent {
     private handlers;
     private api;
@@ -276,4 +311,4 @@ declare class Agent {
 }
 declare function createAgent(config: AgentConfig): Agent;
 
-export { type ActionEvent, Agent, type AgentConfig, type AgentEventHandler, type AgentEventName, type CardAction, type CardActionEvent, type CardActionKind, type CardActionStyle, type CardActionType, type CardField, type CardMessage, type CommandOption, type GroupMember, type JoinedEvent, MessageContext, type PaymentRequestCard, type RemovedEvent, type ResolvedUser, SlashCommandContext, type SlashCommandDefinition, type SlashCommandEvent, type SlashCommandPayload, type WebhookEvent, type WebhookSender, createAgent };
+export { type ActionEvent, Agent, type AgentConfig, type AgentEventHandler, type AgentEventName, type CardAction, type CardActionEvent, type CardActionKind, type CardActionStyle, type CardActionType, type CardField, type CardMessage, type CommandOption, type GroupMember, type JoinedEvent, MessageContext, PaymentCompletedContext, type PaymentCompletedEvent, type PaymentRequestCard, type RemovedEvent, type ResolvedUser, SlashCommandContext, type SlashCommandDefinition, type SlashCommandEvent, type SlashCommandPayload, type WebhookEvent, type WebhookSender, createAgent };

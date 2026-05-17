@@ -185,6 +185,33 @@ var SlashCommandContext = class {
     return this._pendingReply;
   }
 };
+var PaymentCompletedContext = class {
+  constructor(api, event) {
+    this.api = api;
+    this.group = {
+      getMembers: () => this.api.getGroupMembers(this.groupId),
+      getState: (key) => this.api.getState(this.groupId, key),
+      setState: (key, value) => this.api.setState(this.groupId, key, value)
+    };
+    this.raw = event;
+    const p = event.payload;
+    this.messageId = p.messageId;
+    this.groupId = p.groupId;
+    this.channelId = p.channelId;
+    this.payerWallet = p.payerWallet;
+    this.requesterAddress = p.requesterAddress;
+    this.amount = p.amount;
+    this.tokenAddress = p.tokenAddress;
+    this.completedAt = p.completedAt;
+    this.txHash = p.txHash;
+  }
+  sendMessage(content) {
+    return this.api.sendMessage(this.groupId, this.channelId, content);
+  }
+  sendCard(card) {
+    return this.api.sendCard(this.groupId, this.channelId, card);
+  }
+};
 var Agent = class {
   constructor(config) {
     this.handlers = /* @__PURE__ */ new Map();
@@ -268,6 +295,12 @@ var Agent = class {
           this.dispatch("card_action", ctx).catch(
             (err) => console.error(`[agent-sdk] card_action dispatch error:`, err)
           );
+        } else if (eventName === "payment_completed") {
+          const ctx = new PaymentCompletedContext(this.api, payload);
+          res.status(200).json({ ok: true });
+          this.dispatch("payment_completed", ctx).catch(
+            (err) => console.error(`[agent-sdk] payment_completed dispatch error:`, err)
+          );
         } else {
           const ctx = new MessageContext(this.api, payload);
           res.status(200).json({ ok: true });
@@ -286,6 +319,7 @@ function createAgent(config) {
 export {
   Agent,
   MessageContext,
+  PaymentCompletedContext,
   SlashCommandContext,
   createAgent
 };

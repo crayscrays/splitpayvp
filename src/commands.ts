@@ -23,10 +23,10 @@ import {
 
 import type {
   MessageContext as MsgContext,
+  PaymentCompletedContext,
   CardField,
   CardMessage,
 } from "@bevo/agent-sdk";
-type PaymentContext = MsgContext;
 
 // ---- Helpers ----
 
@@ -502,20 +502,16 @@ export async function handleSettle(ctx: MsgContext): Promise<void> {
   }
 }
 
-export async function handlePaymentComplete(ctx: PaymentContext): Promise<void> {
+export async function handlePaymentComplete(ctx: PaymentCompletedContext): Promise<void> {
   const groupId = extractState(await ctx.group.getState("splitpay_group_id"));
   if (!groupId) return;
 
-  const from: string = ctx.sender.wallet;
-  const rawPayload = ctx.raw?.payload ?? {};
-  const actionPayload: Record<string, unknown> = rawPayload.actionPayload ?? {};
-  const to = (actionPayload.to ?? actionPayload.requesterAddress) as string;
-  const amount = actionPayload.amount as string;
-  const token = (actionPayload.token ?? actionPayload.symbol) as string;
-  const txHash: string | undefined = rawPayload.result?.txHash;
-  if (token !== "USDC") return;
+  const from = ctx.payerWallet;
+  const to = ctx.requesterAddress;
+  const txHash = ctx.txHash ?? undefined;
+  if (!to || !ctx.amount) return;
 
-  const paid = parseFloat(amount);
+  const paid = parseFloat(ctx.amount);
   if (isNaN(paid) || paid <= 0) return;
 
   const [expenses, members] = await Promise.all([
@@ -545,7 +541,7 @@ export async function handlePaymentComplete(ctx: PaymentContext): Promise<void> 
   }
 
   if (settledCount > 0) {
-    await ctx.reply(
+    await ctx.sendMessage(
       `${shortName(from, members)} paid ${formatUsdc(paid)} to ${shortName(to, members)}. ${settledCount} split${settledCount !== 1 ? "s" : ""} settled.`
     );
   }

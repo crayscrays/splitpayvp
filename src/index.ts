@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { createAgent } from "@bevo/agent-sdk";
-import type { SlashCommandDefinition, CardMessage, PaymentRequestCard } from "@bevo/agent-sdk";
+import type { SlashCommandDefinition, CardMessage, PaymentRequestCard, PaymentCompletedContext } from "@bevo/agent-sdk";
 import {
   handleHelp,
   handleCreate,
@@ -15,7 +15,6 @@ import {
   handlePaymentComplete,
 } from "./commands.js";
 import type { MessageContext, SlashCommandContext } from "@bevo/agent-sdk";
-type PaymentContext = MessageContext;
 
 const COMMANDS: SlashCommandDefinition[] = [
   { name: "help",     description: "Show available commands" },
@@ -126,7 +125,7 @@ agent.on("message", async (ctx: MessageContext) => {
   }
 });
 
-agent.on("card_action", async (ctx: PaymentContext) => {
+agent.on("payment_completed", async (ctx: PaymentCompletedContext) => {
   await handlePaymentComplete(ctx);
 });
 
