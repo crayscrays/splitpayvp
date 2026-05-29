@@ -486,6 +486,7 @@ export async function handleSettle(ctx: MsgContext): Promise<void> {
         symbol: "USDC",
         tokenAddress: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
         requesterAddress: d.to,
+        targetWallet: ctx.sender.wallet,
       });
     }
   } else {
