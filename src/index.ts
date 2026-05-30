@@ -14,6 +14,7 @@ import {
   handleSettle,
   handlePaymentComplete,
 } from "./commands.js";
+import { handleLlmMessage } from "./llm.js";
 import type { MessageContext, SlashCommandContext } from "@bevo/agent-sdk";
 
 const COMMANDS: SlashCommandDefinition[] = [
@@ -103,7 +104,24 @@ agent.on("message", async (ctx: MessageContext) => {
   // Strip leading @mention prefix, e.g. "@SplitPay /add 50 dinner"
   content = content.replace(/^@\S+\s*/, "").trim();
 
-  if (!content.startsWith("/")) return;
+  if (!content.startsWith("/")) {
+    // Pass free-text messages to the LLM agent if a group is linked
+    const rawState = await ctx.group.getState("splitpay_group_id").catch(() => null);
+    const groupId =
+      typeof rawState === "string"
+        ? rawState
+        : rawState && typeof rawState === "object" && "value" in (rawState as object)
+        ? (rawState as any).value
+        : null;
+    if (groupId) {
+      try {
+        await handleLlmMessage(ctx, groupId);
+      } catch (err) {
+        console.error("[message] LLM error:", err);
+      }
+    }
+    return;
+  }
 
   const spaceIdx = content.indexOf(" ");
   const cmd = (spaceIdx === -1 ? content.slice(1) : content.slice(1, spaceIdx)).toLowerCase();
