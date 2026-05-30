@@ -113,12 +113,15 @@ agent.on("message", async (ctx: MessageContext) => {
         : rawState && typeof rawState === "object" && "value" in (rawState as object)
         ? (rawState as any).value
         : null;
+    console.log(`[message] non-command: groupId=${groupId} content="${content.slice(0, 60)}"`);
     if (groupId) {
       try {
-        await handleLlmMessage(ctx, groupId);
+        await handleLlmMessage(content, ctx, groupId);
       } catch (err) {
         console.error("[message] LLM error:", err);
       }
+    } else {
+      console.log("[message] no group linked — ignoring non-command message");
     }
     return;
   }

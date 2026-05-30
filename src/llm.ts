@@ -120,7 +120,7 @@ async function executeTool(name: string, input: Record<string, unknown>, ctx: Me
   }
 }
 
-export async function handleLlmMessage(ctx: MessageContext, groupId: string): Promise<void> {
+export async function handleLlmMessage(userContent: string, ctx: MessageContext, groupId: string): Promise<void> {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
     console.warn("[llm] OPENROUTER_API_KEY not set — skipping LLM reply");
@@ -159,6 +159,7 @@ Current user: ${senderName} (wallet: ${ctx.sender.wallet})
 
 Use tools to perform actions (add expense, check balance, etc.). For simple questions or info already in the context, reply directly. Keep responses brief.`;
 
+  console.log(`[llm] calling OpenRouter model=${MODEL} user="${userContent.slice(0, 60)}"`);
   let body: Record<string, unknown>;
   try {
     const res = await fetch(OPENROUTER_URL, {
@@ -173,17 +174,19 @@ Use tools to perform actions (add expense, check balance, etc.). For simple ques
         tools: TOOLS,
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: ctx.content },
+          { role: "user", content: userContent },
         ],
       }),
     });
 
     if (!res.ok) {
-      console.error("[llm] OpenRouter error:", res.status, await res.text());
+      const errText = await res.text();
+      console.error(`[llm] OpenRouter HTTP ${res.status}:`, errText);
       return;
     }
 
     body = (await res.json()) as Record<string, unknown>;
+    console.log(`[llm] response stop_reason=${(body.choices as any[])?.[0]?.finish_reason}`);
   } catch (err) {
     console.error("[llm] fetch error:", err);
     return;
