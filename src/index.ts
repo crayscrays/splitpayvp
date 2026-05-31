@@ -14,8 +14,8 @@ import {
   handleSettle,
   handlePaymentComplete,
 } from "./commands.js";
-import { handleLlmMessage } from "./llm.js";
-import type { MessageContext, SlashCommandContext } from "@bevo/agent-sdk";
+import { handleLlmMessage, handleDmMessage } from "./llm.js";
+import type { MessageContext, SlashCommandContext, DmMessageContext } from "@bevo/agent-sdk";
 
 const COMMANDS: SlashCommandDefinition[] = [
   { name: "help",     description: "Show available commands" },
@@ -148,6 +148,16 @@ agent.on("message", async (ctx: MessageContext) => {
 
 agent.on("payment_completed", async (ctx: PaymentCompletedContext) => {
   await handlePaymentComplete(ctx);
+});
+
+agent.on("dm_message", async (ctx: DmMessageContext) => {
+  console.log(`[dm_message] sender=${ctx.senderWallet} content="${ctx.content.slice(0, 80)}"`);
+  try {
+    await handleDmMessage(ctx);
+  } catch (err) {
+    console.error("[dm_message] error:", err);
+    await ctx.reply("Something went wrong. Please try again.");
+  }
 });
 
 const PORT = Number(process.env.PORT) || 3000;

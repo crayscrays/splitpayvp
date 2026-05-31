@@ -8,13 +8,8 @@ interface GroupMember {
 }
 interface AgentConfig {
     apiKey: string;
-    /** Optional — used to verify webhook signatures when the server sends X-Webhook-Signature. */
     webhookSecret?: string;
     baseUrl?: string;
-    /**
-     * Enable dev mode — outbound API calls are logged to console instead of hitting the network.
-     * The webhook server still runs so you can receive real events via ngrok/localtunnel.
-     */
     dev?: boolean;
 }
 interface WebhookSender {
@@ -73,24 +68,18 @@ type CardActionKind = "callback" | "wallet_action" | "link" | "open_app";
 /** @deprecated Use CardActionKind */
 type CardActionType = CardActionKind;
 interface CardAction {
-    /** Unique identifier — returned in card_action webhook event */
     id: string;
     label: string;
     kind: CardActionKind;
     style?: CardActionStyle;
-    /** For "callback": opaque payload forwarded to your webhook */
     payload?: Record<string, unknown>;
-    /** For "wallet_action": transaction to sign */
     tx?: {
         to: string;
-        /** ERC-20 token contract address; omit for native ETH */
         token?: string;
         amount: string;
         decimals?: number;
     };
-    /** For "link" */
     url?: string;
-    /** For "open_app" */
     appSlug?: string;
 }
 interface CardField {
@@ -103,32 +92,18 @@ interface CardMessage {
     imageUrl?: string;
     fields?: CardField[];
     actions?: CardAction[];
-    /**
-     * Optional metadata attached to the card.
-     * - `targetWallet`: only this wallet address can interact with the card's actions.
-     */
     metadata?: {
         targetWallet?: string;
         [key: string]: unknown;
     };
 }
-/**
- * Sends a tappable "Requesting X ETH · Tap to pay" bubble into a group channel.
- * When the user pays, your webhook receives a `payment_completed` event.
- */
 interface PaymentRequestCard {
     type: "payment_request";
     amount: string;
     symbol: string;
-    /** ERC-20 token contract address; omit for native ETH */
     tokenAddress?: string;
     decimals?: number;
-    /** Address that receives the payment */
     requesterAddress: string;
-    /**
-     * If set, only this wallet can tap to pay.
-     * Other members see "Not for you" and cannot interact.
-     */
     targetWallet?: string;
 }
 interface CommandOption {
@@ -159,10 +134,6 @@ interface SlashCommandPayload {
     senderWallet: string;
     messageId: number;
     createdAt: string;
-    /**
-     * ID of the `bot_thinking` placeholder message inserted immediately.
-     * Use with `ctx.updateMessage(placeholderMessageId, ...)` for deferred responses.
-     */
     placeholderMessageId?: number;
 }
 interface SlashCommandEvent {
@@ -175,7 +146,6 @@ interface PaymentCompletedEvent {
         messageId: number;
         groupId: number;
         channelId: number;
-        /** Wallet address of the user who paid */
         payerWallet: string;
         requesterAddress: string | null;
         amount: string | null;
@@ -184,7 +154,18 @@ interface PaymentCompletedEvent {
         txHash: string | null;
     };
 }
-type AgentEventName = "message" | "slash_command" | "card_action" | "payment_completed" | "joined" | "removed";
+interface DmMessagePayload {
+    conversationId: string;
+    messageId: string;
+    senderWallet: string;
+    content: string;
+    createdAt: string;
+}
+interface DmMessageEvent {
+    event: "dm_message";
+    payload: DmMessagePayload;
+}
+type AgentEventName = "message" | "slash_command" | "card_action" | "payment_completed" | "joined" | "removed" | "dm_message";
 type AgentEventHandler = (ctx: any) => void | Promise<void>;
 
 declare class ApiClient {
@@ -203,6 +184,7 @@ declare class ApiClient {
         contentType?: string;
         metadata?: Record<string, unknown>;
     }): Promise<any>;
+    sendDm(conversationId: string, content: string): Promise<any>;
     getGroupMembers(groupId: string | number): Promise<GroupMember[]>;
     getState(groupId: string | number, key: string): Promise<any>;
     setState(groupId: string | number, key: string, value: any): Promise<any>;
@@ -245,20 +227,11 @@ declare class SlashCommandContext {
     constructor(api: ApiClient, event: SlashCommandEvent);
     reply(content: string): void;
     replyCard(card: CardMessage): void;
-    /**
-     * Signal that you will handle this command asynchronously.
-     * Bevo shows a thinking bubble until you call `updateMessage()`.
-     * After deferring, use `ctx.updateMessage(ctx.placeholderMessageId!, ...)`.
-     */
     defer(): void;
     resolveUser(mention: string): ResolvedUser | undefined;
     sendMessage(content: string): Promise<any>;
     sendCard(card: CardMessage): Promise<any>;
     sendPaymentRequest(card: PaymentRequestCard): Promise<any>;
-    /**
-     * Update the bot_thinking placeholder (or any message this agent sent).
-     * Use after `defer()` to post the real response.
-     */
     updateMessage(messageId: number | string, payload: {
         content?: string;
         card?: CardMessage;
@@ -275,7 +248,7 @@ declare class SlashCommandContext {
         content?: string;
         card?: CardMessage;
         type?: number;
-    } | null;
+    };
 }
 declare class PaymentCompletedContext {
     private api;
@@ -298,6 +271,17 @@ declare class PaymentCompletedContext {
         setState: (key: string, value: any) => Promise<any>;
     };
 }
+declare class DmMessageContext {
+    private api;
+    conversationId: string;
+    messageId: string;
+    senderWallet: string;
+    content: string;
+    createdAt: string;
+    raw: DmMessageEvent;
+    constructor(api: ApiClient, event: DmMessageEvent);
+    reply(content: string): Promise<any>;
+}
 declare class Agent {
     private handlers;
     private api;
@@ -311,4 +295,4 @@ declare class Agent {
 }
 declare function createAgent(config: AgentConfig): Agent;
 
-export { type ActionEvent, Agent, type AgentConfig, type AgentEventHandler, type AgentEventName, type CardAction, type CardActionEvent, type CardActionKind, type CardActionStyle, type CardActionType, type CardField, type CardMessage, type CommandOption, type GroupMember, type JoinedEvent, MessageContext, PaymentCompletedContext, type PaymentCompletedEvent, type PaymentRequestCard, type RemovedEvent, type ResolvedUser, SlashCommandContext, type SlashCommandDefinition, type SlashCommandEvent, type SlashCommandPayload, type WebhookEvent, type WebhookSender, createAgent };
+export { type ActionEvent, Agent, type AgentConfig, type AgentEventHandler, type AgentEventName, type CardAction, type CardActionEvent, type CardActionKind, type CardActionStyle, type CardActionType, type CardField, type CardMessage, type CommandOption, DmMessageContext, type DmMessageEvent, type DmMessagePayload, type GroupMember, type JoinedEvent, MessageContext, PaymentCompletedContext, type PaymentCompletedEvent, type PaymentRequestCard, type RemovedEvent, type ResolvedUser, SlashCommandContext, type SlashCommandDefinition, type SlashCommandEvent, type SlashCommandPayload, type WebhookEvent, type WebhookSender, createAgent };

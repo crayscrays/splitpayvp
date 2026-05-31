@@ -1,4 +1,3 @@
-"use strict";
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -31,6 +30,7 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 var index_exports = {};
 __export(index_exports, {
   Agent: () => Agent,
+  DmMessageContext: () => DmMessageContext,
   MessageContext: () => MessageContext,
   PaymentCompletedContext: () => PaymentCompletedContext,
   SlashCommandContext: () => SlashCommandContext,
@@ -114,6 +114,12 @@ var ApiClient = class {
       body: JSON.stringify(payload)
     });
   }
+  sendDm(conversationId, content) {
+    return this.fetch("/api/agent/dm-send", {
+      method: "POST",
+      body: JSON.stringify({ conversationId, content })
+    });
+  }
   getGroupMembers(groupId) {
     return this.fetch(`/api/agent/groups/${encodeURIComponent(String(groupId))}/members`);
   }
@@ -182,28 +188,18 @@ var SlashCommandContext = class {
     this.senderWallet = p.senderWallet;
     this.placeholderMessageId = p.placeholderMessageId;
   }
-  // Synchronous reply — returned directly in the webhook HTTP response.
-  // Bevo posts it as a bot message in the channel automatically.
   reply(content) {
     this._pendingReply = { content };
   }
   replyCard(card) {
     this._pendingReply = { card };
   }
-  /**
-   * Signal that you will handle this command asynchronously.
-   * Bevo shows a thinking bubble until you call `updateMessage()`.
-   * After deferring, use `ctx.updateMessage(ctx.placeholderMessageId!, ...)`.
-   */
   defer() {
     this._pendingReply = { type: 5 };
   }
-  // Lookup a resolved user from options.
-  // Pass the option value (e.g. ctx.options.user) — handles "@" prefix automatically.
   resolveUser(mention) {
     return this.resolved.users[mention] ?? this.resolved.users[mention.startsWith("@") ? mention : `@${mention}`];
   }
-  // Async fallback — use this when your response takes longer than 3 seconds
   sendMessage(content) {
     return this.api.sendMessage(this.groupId, this.channelId, content);
   }
@@ -213,10 +209,6 @@ var SlashCommandContext = class {
   sendPaymentRequest(card) {
     return this.api.sendPaymentRequest(this.groupId, this.channelId, card);
   }
-  /**
-   * Update the bot_thinking placeholder (or any message this agent sent).
-   * Use after `defer()` to post the real response.
-   */
   updateMessage(messageId, payload) {
     return this.api.updateMessage(messageId, payload);
   }
@@ -252,6 +244,21 @@ var PaymentCompletedContext = class {
     return this.api.sendCard(this.groupId, this.channelId, card);
   }
 };
+var DmMessageContext = class {
+  constructor(api, event) {
+    this.api = api;
+    this.raw = event;
+    const p = event.payload;
+    this.conversationId = p.conversationId;
+    this.messageId = p.messageId;
+    this.senderWallet = p.senderWallet;
+    this.content = p.content;
+    this.createdAt = p.createdAt;
+  }
+  reply(content) {
+    return this.api.sendDm(this.conversationId, content);
+  }
+};
 var Agent = class {
   constructor(config) {
     this.handlers = /* @__PURE__ */ new Map();
@@ -268,7 +275,6 @@ var Agent = class {
     this.handlers.set(event, list);
     return this;
   }
-  // Register slash commands with Bevo — call once at startup or deploy time.
   registerCommands(commands) {
     return this.api.registerCommands(commands);
   }
@@ -341,6 +347,12 @@ var Agent = class {
           this.dispatch("payment_completed", ctx).catch(
             (err) => console.error(`[agent-sdk] payment_completed dispatch error:`, err)
           );
+        } else if (eventName === "dm_message") {
+          const ctx = new DmMessageContext(this.api, payload);
+          res.status(200).json({ ok: true });
+          this.dispatch("dm_message", ctx).catch(
+            (err) => console.error(`[agent-sdk] dm_message dispatch error:`, err)
+          );
         } else {
           const ctx = new MessageContext(this.api, payload);
           res.status(200).json({ ok: true });
@@ -359,6 +371,7 @@ function createAgent(config) {
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   Agent,
+  DmMessageContext,
   MessageContext,
   PaymentCompletedContext,
   SlashCommandContext,
