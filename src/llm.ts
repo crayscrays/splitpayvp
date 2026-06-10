@@ -120,36 +120,39 @@ async function executeTool(name: string, input: Record<string, unknown>, ctx: Sp
   }
 }
 
-export async function handleLlmMessage(userContent: string, ctx: SplitPayContext, groupId: string): Promise<void> {
+export async function handleLlmMessage(userContent: string, ctx: SplitPayContext, groupId: string | null): Promise<void> {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
     console.warn("[llm] OPENROUTER_API_KEY not set — skipping LLM reply");
     return;
   }
 
-  const [members, expenses, groupName] = await Promise.all([
-    fetchMembers(groupId),
-    fetchExpenses(groupId),
-    fetchGroupName(groupId),
-  ]);
-
-  const balances = computeNetBalances(expenses);
-  const debts = simplifyDebts(balances);
   const senderName = ctx.sender.displayName || shortAddr(ctx.sender.wallet);
 
-  const memberList = members
-    .map((m) => m.displayName || shortAddr(m.walletAddress))
-    .join(", ");
-  const recentExpenses = expenses
-    .slice(-5)
-    .map((e) => `${e.description}: ${formatUsdc(e.amount)}`)
-    .join("; ");
-  const debtSummary =
-    debts.length === 0
-      ? "all settled"
-      : debts.map((d) => `${d.from} owes ${d.to}: ${formatUsdc(d.amount)}`).join("; ");
+  let systemPrompt: string;
+  if (groupId) {
+    const [members, expenses, groupName] = await Promise.all([
+      fetchMembers(groupId),
+      fetchExpenses(groupId),
+      fetchGroupName(groupId),
+    ]);
 
-  const systemPrompt = `You are SplitPay, an AI assistant that helps groups track and split shared expenses in 0xChat.
+    const balances = computeNetBalances(expenses);
+    const debts = simplifyDebts(balances);
+
+    const memberList = members
+      .map((m) => m.displayName || shortAddr(m.walletAddress))
+      .join(", ");
+    const recentExpenses = expenses
+      .slice(-5)
+      .map((e) => `${e.description}: ${formatUsdc(e.amount)}`)
+      .join("; ");
+    const debtSummary =
+      debts.length === 0
+        ? "all settled"
+        : debts.map((d) => `${d.from} owes ${d.to}: ${formatUsdc(d.amount)}`).join("; ");
+
+    systemPrompt = `You are SplitPay, an AI assistant that helps groups track and split shared expenses in 0xChat.
 
 Current group: ${groupName ?? "Unknown"}
 Members: ${memberList || "none"}
@@ -158,6 +161,12 @@ Outstanding debts: ${debtSummary}
 Current user: ${senderName} (wallet: ${ctx.sender.wallet})
 
 Use tools to perform actions (add expense, check balance, etc.). For simple questions or info already in the context, reply directly. Keep responses brief.`;
+  } else {
+    systemPrompt = `You are SplitPay, an AI assistant that helps groups track and split shared expenses in 0xChat.
+Current user: ${senderName} (wallet: ${ctx.sender.wallet})
+
+No expense group is linked to this chat yet. You can help the user get started — they should use /create <name> in a group chat to start a new expense group, or /link <code> to join an existing one. Answer general questions about SplitPay and keep responses brief.`;
+  }
 
   console.log(`[llm] calling OpenRouter model=${MODEL} user="${userContent.slice(0, 60)}"`);
   let body: Record<string, unknown>;

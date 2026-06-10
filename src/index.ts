@@ -159,19 +159,17 @@ agent.onMessage(async (ctx: MessageContext) => {
     const rawState = await ctx.client
       .getGroupState(ctx.payload.groupId, "splitpay_group_id")
       .catch(() => null);
-    const groupId =
+    const splitPayGroupId =
       typeof rawState === "string"
         ? rawState
         : rawState && typeof rawState === "object" && "value" in (rawState as object)
         ? (rawState as { value: string }).value
         : null;
 
-    if (groupId) {
-      try {
-        await handleLlmMessage(content, adapted, groupId);
-      } catch (err) {
-        console.error("[message] LLM error:", err);
-      }
+    try {
+      await handleLlmMessage(content, adapted, splitPayGroupId);
+    } catch (err) {
+      console.error("[message] LLM error:", err);
     }
     return;
   }
