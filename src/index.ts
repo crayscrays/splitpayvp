@@ -1,6 +1,8 @@
 import "dotenv/config";
-import { createAgent } from "@bevo/agent-sdk";
-import type { SlashCommandDefinition, CardMessage, PaymentRequestCard, PaymentCompletedContext } from "@bevo/agent-sdk";
+import express from "express";
+import { BevoAgent } from "@bevo/agent-sdk";
+import type { CommandContext, MessageContext, AppCard, GroupMember as SdkMember } from "@bevo/agent-sdk";
+import type { SplitPayContext, SplitPayCard, ChatMember } from "./commands.js";
 import {
   handleHelp,
   handleCreate,
@@ -12,116 +14,164 @@ import {
   handleBalance,
   handleDebts,
   handleSettle,
-  handlePaymentComplete,
 } from "./commands.js";
-import { handleLlmMessage, handleDmMessage } from "./llm.js";
-import type { MessageContext, SlashCommandContext, DmMessageContext } from "@bevo/agent-sdk";
+import { handleLlmMessage } from "./llm.js";
 
-const COMMANDS: SlashCommandDefinition[] = [
-  { name: "help",     description: "Show available commands" },
-  { name: "create",   description: "Start a new expense group", options: [{ name: "name",  type: "string",  required: true,  description: "Group name" }] },
-  { name: "link",     description: "Connect this chat to an existing group", options: [{ name: "code",  type: "string",  required: true,  description: "6-char invite code" }] },
-  { name: "join",     description: "Add yourself or someone to the group",   options: [{ name: "user",  type: "user",    required: false, description: "User to add (leave blank to add yourself)" }] },
-  { name: "status",   description: "Show group info and invite code" },
-  { name: "add",      description: "Add an expense split equally among members", options: [
-    { name: "amount", type: "string",  required: true,  description: "Amount in USDC" },
-    { name: "title",  type: "string",  required: false, description: "Expense description" },
-  ]},
-  { name: "expenses", description: "List recent expenses", options: [{ name: "limit", type: "integer", required: false, description: "Number to show (default 5)" }] },
-  { name: "balance",  description: "Show net balance per person" },
-  { name: "debts",    description: "Show simplified who owes who" },
-  { name: "settle",   description: "See what you owe and pay via wallet" },
-];
+// ── Adapter helpers ───────────────────────────────────────────────────────────
 
-const agent = createAgent({
-  apiKey: process.env.AGENT_API_KEY!,
-  webhookSecret: process.env.OXCHAT_WEBHOOK_SECRET!,
-  baseUrl: process.env.AGENT_BASE_URL || "https://0xchat.cresign.xyz",
-});
-
-agent.on("joined", async (ctx) => {
-  await ctx.reply(
-    "👋 SplitPay bot joined! I help track shared expenses.\n\nType /help to see available commands."
-  );
-});
-
-agent.on("removed", async (_ctx) => {
-  // nothing to do on removal
-});
-
-// Adapt a SlashCommandContext into the MessageContext shape the handlers expect
-async function adaptSlashCtx(ctx: SlashCommandContext): Promise<MessageContext> {
-  const raw = await ctx.group.getMembers().catch(() => null);
-  const members = Array.isArray(raw) ? raw : [];
-  const senderMember = members.find(
-    (m) => m.walletAddress.toLowerCase() === ctx.senderWallet.toLowerCase()
-  );
+function sdkMemberToChatMember(m: SdkMember): ChatMember {
   return {
-    ...ctx,
-    content: `/${ctx.commandName} ${ctx.rawArgs}`.trim(),
-    sender: {
-      wallet: ctx.senderWallet,
-      displayName: senderMember?.displayName ?? ctx.senderWallet.slice(0, 8),
-      avatar: senderMember?.avatar ?? "",
-    },
-    reply: (content: string) => Promise.resolve(ctx.reply(content)),
-    replyCard: (card: unknown) => Promise.resolve(ctx.replyCard(card as CardMessage)),
-    sendPaymentRequest: (card: unknown) => ctx.sendPaymentRequest(card as PaymentRequestCard),
-  } as unknown as MessageContext;
+    walletAddress: m.walletAddress ?? m.principalId,
+    displayName: m.displayName ?? m.username ?? (m.walletAddress ?? m.principalId).slice(0, 8),
+    avatar: m.avatar ?? "",
+  };
 }
 
-agent.on("slash_command", async (ctx: SlashCommandContext) => {
-  console.log(`[slash_command] /${ctx.commandName} args="${ctx.rawArgs}" sender=${ctx.senderWallet} group=${ctx.groupId}`);
-  try {
-    const adapted = await adaptSlashCtx(ctx);
-    const args = ctx.rawArgs;
+function toAppCard(card: SplitPayCard): AppCard {
+  return {
+    type: "app_card",
+    title: card.title,
+    description: card.subtitle,
+    fields: card.fields,
+    actions: (card.actions ?? []).map((a) => ({
+      id: a.id ?? String(Math.random()),
+      label: a.label,
+      type: (a.type as "link" | "action" | "transaction" | undefined) ?? "action",
+      url: a.url,
+    })),
+  };
+}
 
-    switch (ctx.commandName) {
-      case "help":                          await handleHelp(adapted);            break;
-      case "create":                        await handleCreate(args, adapted);    break;
-      case "link":                          await handleLink(args, adapted);      break;
-      case "join":                          await handleJoin(args, adapted);      break;
-      case "status": case "info":           await handleStatus(adapted);          break;
-      case "add":                           await handleAdd(args, adapted);       break;
-      case "expenses": case "history": case "list": await handleExpenses(args, adapted); break;
-      case "balance": case "balances":      await handleBalance(adapted);         break;
-      case "debts": case "debt": case "owes": await handleDebts(adapted);         break;
-      case "settle": case "settleup": case "pay": await handleSettle(adapted);    break;
-      default:
-        await ctx.reply(`Unknown command "/${ctx.commandName}". Type /help to see available commands.`);
-    }
-    console.log(`[slash_command] /${ctx.commandName} handled ok`);
-  } catch (err) {
-    console.error(`[slash_command] /${ctx.commandName} error:`, err);
-    ctx.reply("Something went wrong. Please try again.");
-  }
+function makeCommandCtx(ctx: CommandContext): SplitPayContext {
+  const { groupId, channelId, senderId } = ctx.payload;
+  return {
+    sender: {
+      wallet: senderId,
+      displayName: senderId.slice(0, 8),
+      avatar: "",
+    },
+    group: {
+      async getMembers(): Promise<ChatMember[]> {
+        const members = await ctx.client.getGroupMembers(groupId).catch(() => []);
+        return members.map(sdkMemberToChatMember);
+      },
+      async getState(key: string): Promise<unknown> {
+        return ctx.client.getGroupState(groupId, key).catch(() => null);
+      },
+      async setState(key: string, value: unknown): Promise<void> {
+        await ctx.client.setGroupState(groupId, key, value);
+      },
+    },
+    reply(content: string): Promise<void> {
+      ctx.reply(content);
+      return Promise.resolve();
+    },
+    replyCard(card: SplitPayCard): Promise<void> {
+      ctx.replyCard(toAppCard(card));
+      return Promise.resolve();
+    },
+    async sendPaymentRequest(card: unknown): Promise<void> {
+      await ctx.client.sendMessage({
+        groupId,
+        channelId,
+        contentType: "payment_request",
+        card: card as AppCard,
+      });
+    },
+  };
+}
+
+async function makeMessageCtx(ctx: MessageContext): Promise<SplitPayContext> {
+  const { groupId, channelId, senderId } = ctx.payload;
+  const members = await ctx.client.getGroupMembers(groupId).catch(() => []);
+  const senderMember = members.find((m) => m.principalId === senderId);
+  return {
+    sender: {
+      wallet: senderMember?.walletAddress ?? senderId,
+      displayName:
+        senderMember?.displayName ??
+        senderMember?.username ??
+        (senderMember?.walletAddress ?? senderId).slice(0, 8),
+      avatar: senderMember?.avatar ?? "",
+    },
+    group: {
+      async getMembers(): Promise<ChatMember[]> {
+        return members.map(sdkMemberToChatMember);
+      },
+      async getState(key: string): Promise<unknown> {
+        return ctx.client.getGroupState(groupId, key).catch(() => null);
+      },
+      async setState(key: string, value: unknown): Promise<void> {
+        await ctx.client.setGroupState(groupId, key, value);
+      },
+    },
+    async reply(content: string): Promise<void> {
+      await ctx.reply(content);
+    },
+    async replyCard(card: SplitPayCard): Promise<void> {
+      await ctx.replyWith({ contentType: "app_card", card: toAppCard(card) });
+    },
+    async sendPaymentRequest(card: unknown): Promise<void> {
+      await ctx.client.sendMessage({
+        groupId,
+        channelId,
+        contentType: "payment_request",
+        card: card as AppCard,
+      });
+    },
+  };
+}
+
+// ── Agent setup ───────────────────────────────────────────────────────────────
+
+const agent = new BevoAgent({
+  apiKey: process.env.AGENT_API_KEY!,
+  apiBase: process.env.AGENT_BASE_URL || "https://0xchat.cresign.xyz",
 });
 
-agent.on("message", async (ctx: MessageContext) => {
-  console.log(`[message] content="${ctx.content.slice(0, 80)}" sender=${ctx.sender.wallet} group=${ctx.groupId}`);
-  let content = ctx.content.trim();
+// Register all slash commands
+agent
+  .command("help",     (ctx) => handleHelp(makeCommandCtx(ctx)),     { description: "Show available commands" })
+  .command("create",   (ctx) => handleCreate(ctx.payload.rawArgs, makeCommandCtx(ctx)), { description: "Start a new expense group", options: [{ name: "name",  type: "string",  required: true,  description: "Group name" }] })
+  .command("link",     (ctx) => handleLink(ctx.payload.rawArgs, makeCommandCtx(ctx)),   { description: "Connect this chat to an existing group", options: [{ name: "code",  type: "string",  required: true,  description: "6-char invite code" }] })
+  .command("join",     (ctx) => handleJoin(ctx.payload.rawArgs, makeCommandCtx(ctx)),   { description: "Add yourself or someone to the group", options: [{ name: "user",  type: "user",    required: false, description: "User to add" }] })
+  .command("status",   (ctx) => handleStatus(makeCommandCtx(ctx)),   { description: "Show group info and invite code" })
+  .command("add",      (ctx) => handleAdd(ctx.payload.rawArgs, makeCommandCtx(ctx)),    { description: "Add an expense split equally among members", options: [
+    { name: "amount", type: "string",  required: true,  description: "Amount in USDC" },
+    { name: "title",  type: "string",  required: false, description: "Expense description" },
+  ]})
+  .command("expenses", (ctx) => handleExpenses(ctx.payload.rawArgs, makeCommandCtx(ctx)), { description: "List recent expenses", options: [{ name: "limit", type: "integer", required: false, description: "Number to show (default 5)" }] })
+  .command("balance",  (ctx) => handleBalance(makeCommandCtx(ctx)),  { description: "Show net balance per person" })
+  .command("debts",    (ctx) => handleDebts(makeCommandCtx(ctx)),    { description: "Show simplified who owes who" })
+  .command("settle",   (ctx) => handleSettle(makeCommandCtx(ctx)),   { description: "See what you owe and pay via wallet" });
 
-  // Strip leading @mention prefix, e.g. "@SplitPay /add 50 dinner"
+// Handle @mention messages (free-text and inline /commands)
+agent.onMessage(async (ctx: MessageContext) => {
+  let content = ctx.payload.content.trim();
+  console.log(`[message] content="${content.slice(0, 80)}" sender=${ctx.payload.senderId} group=${ctx.payload.groupId}`);
+
+  // Strip leading @mention prefix
   content = content.replace(/^@\S+\s*/, "").trim();
 
+  const adapted = await makeMessageCtx(ctx);
+
   if (!content.startsWith("/")) {
-    // Pass free-text messages to the LLM agent if a group is linked
-    const rawState = await ctx.group.getState("splitpay_group_id").catch(() => null);
+    const rawState = await ctx.client
+      .getGroupState(ctx.payload.groupId, "splitpay_group_id")
+      .catch(() => null);
     const groupId =
       typeof rawState === "string"
         ? rawState
         : rawState && typeof rawState === "object" && "value" in (rawState as object)
-        ? (rawState as any).value
+        ? (rawState as { value: string }).value
         : null;
-    console.log(`[message] non-command: groupId=${groupId} content="${content.slice(0, 60)}"`);
+
     if (groupId) {
       try {
-        await handleLlmMessage(content, ctx, groupId);
+        await handleLlmMessage(content, adapted, groupId);
       } catch (err) {
         console.error("[message] LLM error:", err);
       }
-    } else {
-      console.log("[message] no group linked — ignoring non-command message");
     }
     return;
   }
@@ -130,45 +180,40 @@ agent.on("message", async (ctx: MessageContext) => {
   const cmd = (spaceIdx === -1 ? content.slice(1) : content.slice(1, spaceIdx)).toLowerCase();
   const args = spaceIdx === -1 ? "" : content.slice(spaceIdx + 1).trim();
 
-  switch (cmd) {
-    case "help":                          await handleHelp(ctx);            break;
-    case "create":                        await handleCreate(args, ctx);    break;
-    case "link":                          await handleLink(args, ctx);      break;
-    case "join":                          await handleJoin(args, ctx);      break;
-    case "status": case "info":           await handleStatus(ctx);          break;
-    case "add":                           await handleAdd(args, ctx);       break;
-    case "expenses": case "history": case "list": await handleExpenses(args, ctx); break;
-    case "balance": case "balances":      await handleBalance(ctx);         break;
-    case "debts": case "debt": case "owes": await handleDebts(ctx);         break;
-    case "settle": case "settleup": case "pay": await handleSettle(ctx);    break;
-    default:
-      await ctx.reply(`Unknown command "/${cmd}". Type /help to see available commands.`);
-  }
-});
-
-agent.on("payment_completed", async (ctx: PaymentCompletedContext) => {
-  await handlePaymentComplete(ctx);
-});
-
-agent.on("dm_message", async (ctx: DmMessageContext) => {
-  console.log(`[dm_message] sender=${ctx.senderWallet} content="${ctx.content.slice(0, 80)}"`);
   try {
-    await handleDmMessage(ctx);
+    switch (cmd) {
+      case "help":                                             await handleHelp(adapted);            break;
+      case "create":                                          await handleCreate(args, adapted);    break;
+      case "link":                                            await handleLink(args, adapted);      break;
+      case "join":                                            await handleJoin(args, adapted);      break;
+      case "status": case "info":                             await handleStatus(adapted);          break;
+      case "add":                                             await handleAdd(args, adapted);       break;
+      case "expenses": case "history": case "list":           await handleExpenses(args, adapted);  break;
+      case "balance": case "balances":                        await handleBalance(adapted);         break;
+      case "debts": case "debt": case "owes":                 await handleDebts(adapted);           break;
+      case "settle": case "settleup": case "pay":             await handleSettle(adapted);          break;
+      default:
+        await ctx.reply(`Unknown command "/${cmd}". Type /help to see available commands.`);
+    }
   } catch (err) {
-    console.error("[dm_message] error:", err);
+    console.error(`[message] /${cmd} error:`, err);
     await ctx.reply("Something went wrong. Please try again.");
   }
 });
 
-const PORT = Number(process.env.PORT) || 3000;
-agent.listen(PORT);
-console.log(`SplitPay agent listening on port ${PORT}`);
-console.log(`  API key: ${process.env.AGENT_API_KEY ? "set" : "MISSING"}`);
-console.log(`  Webhook secret: ${process.env.OXCHAT_WEBHOOK_SECRET ? "set" : "not set (signature checks skipped)"}`);
-console.log(`  Base URL: ${process.env.AGENT_BASE_URL || "https://0xchat.cresign.xyz"}`);
-console.log(`  Supabase URL: ${process.env.SUPABASE_URL ? process.env.SUPABASE_URL : "MISSING"}`);
-console.log(`  Supabase key: ${process.env.SUPABASE_ANON_KEY ? "set" : "MISSING"}`);
+// ── Express server ────────────────────────────────────────────────────────────
 
-agent.registerCommands(COMMANDS).catch((err) =>
-  console.error("Failed to register slash commands:", err)
-);
+const app = express();
+app.use(express.json());
+app.post("/webhook", agent.express());
+
+const PORT = Number(process.env.PORT) || 3000;
+app.listen(PORT, () => {
+  console.log(`SplitPay agent listening on port ${PORT}`);
+  console.log(`  API key: ${process.env.AGENT_API_KEY ? "set" : "MISSING"}`);
+  console.log(`  Base URL: ${process.env.AGENT_BASE_URL || "https://0xchat.cresign.xyz"}`);
+  console.log(`  Supabase URL: ${process.env.SUPABASE_URL ?? "MISSING"}`);
+  console.log(`  Supabase key: ${process.env.SUPABASE_ANON_KEY ? "set" : "MISSING"}`);
+});
+
+agent.syncCommands().catch((err) => console.error("Failed to sync commands:", err));

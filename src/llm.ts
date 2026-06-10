@@ -9,7 +9,7 @@ import {
   handleStatus,
   handleHelp,
 } from "./commands.js";
-import type { MessageContext, DmMessageContext } from "@bevo/agent-sdk";
+import type { SplitPayContext } from "./commands.js";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const MODEL = process.env.OPENROUTER_MODEL || "anthropic/claude-haiku-4-5";
@@ -91,7 +91,7 @@ const TOOLS = [
   },
 ];
 
-async function executeTool(name: string, input: Record<string, unknown>, ctx: MessageContext): Promise<void> {
+async function executeTool(name: string, input: Record<string, unknown>, ctx: SplitPayContext): Promise<void> {
   switch (name) {
     case "add_expense": {
       const mentions = ((input.split_with as string[]) || []).map((u) => `@${u}`).join(" ");
@@ -120,7 +120,7 @@ async function executeTool(name: string, input: Record<string, unknown>, ctx: Me
   }
 }
 
-export async function handleLlmMessage(userContent: string, ctx: MessageContext, groupId: string): Promise<void> {
+export async function handleLlmMessage(userContent: string, ctx: SplitPayContext, groupId: string): Promise<void> {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
     console.warn("[llm] OPENROUTER_API_KEY not set — skipping LLM reply");
@@ -210,63 +210,3 @@ Use tools to perform actions (add expense, check balance, etc.). For simple ques
   }
 }
 
-export async function handleDmMessage(ctx: DmMessageContext): Promise<void> {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) {
-    console.warn("[llm] OPENROUTER_API_KEY not set — skipping DM reply");
-    return;
-  }
-
-  const systemPrompt = `You are SplitPay, an AI assistant that helps people track and split shared expenses in group chats on 0xChat.
-
-In this 1-on-1 conversation the user cannot run commands — just answer their questions helpfully. You can explain how SplitPay works, what commands are available, and help them understand their expenses.
-
-Available commands in group chats:
-/create <name>     — Start a new expense group
-/link <code>       — Connect a chat to an existing group
-/join [@user]      — Add yourself or someone to the group
-/add <amount> [title] [@user...]  — Record an expense, split equally
-/balance           — Net balance per person
-/debts             — Simplified who owes who
-/settle            — Pay what you owe via wallet
-/expenses [n]      — List recent expenses
-/status            — Group info and invite code
-
-Keep replies concise and friendly.`;
-
-  console.log(`[llm:dm] calling OpenRouter model=${MODEL} user="${ctx.content.slice(0, 60)}"`);
-  let body: Record<string, unknown>;
-  try {
-    const res = await fetch(OPENROUTER_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        max_tokens: 1024,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: ctx.content },
-        ],
-      }),
-    });
-
-    if (!res.ok) {
-      const errText = await res.text();
-      console.error(`[llm:dm] OpenRouter HTTP ${res.status}:`, errText);
-      return;
-    }
-
-    body = (await res.json()) as Record<string, unknown>;
-  } catch (err) {
-    console.error("[llm:dm] fetch error:", err);
-    return;
-  }
-
-  const text = (body.choices as any[])?.[0]?.message?.content?.trim();
-  if (text) {
-    await ctx.reply(text);
-  }
-}

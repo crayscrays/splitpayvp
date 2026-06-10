@@ -1,44 +1,27 @@
 {
   "name": "@bevo/agent-sdk",
   "version": "0.1.0",
-  "description": "Build agents and bots on Bevo — webhook server, slash commands, and group state management.",
-  "type": "module",
+  "description": "SDK for building agents that work inside the Bevo platform",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
     }
   },
-  "main": "./dist/index.cjs",
-  "types": "./dist/index.d.ts",
+  "files": ["dist", "src"],
   "scripts": {
-    "build": "tsup",
-    "dev": "tsup --watch",
-    "typecheck": "tsc --noEmit",
-    "prepublishOnly": "npm run build"
+    "build": "tsup src/index.ts --format cjs,esm --dts --clean",
+    "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
+    "typecheck": "tsc --noEmit"
   },
-  "keywords": [
-    "bevo",
-    "sdk",
-    "agent",
-    "bot",
-    "webhook",
-    "web3",
-    "nostr"
-  ],
-  "author": "bevo",
+  "keywords": ["bevo", "agent", "sdk", "webhook", "web3"],
   "license": "MIT",
-  "dependencies": {
-    "express": "^5.0.0"
-  },
   "devDependencies": {
-    "@types/express": "^5.0.0",
-    "@types/node": "^20.19.39",
     "tsup": "^8.0.0",
-    "typescript": "^5.0.0"
-  },
-  "files": [
-    "dist"
-  ]
+    "typescript": "^5.4.0"
+  }
 }

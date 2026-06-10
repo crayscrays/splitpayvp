@@ -21,12 +21,32 @@ import {
   shortAddr,
 } from "./utils.js";
 
-import type {
-  MessageContext as MsgContext,
-  PaymentCompletedContext,
-  CardField,
-  CardMessage,
-} from "@bevo/agent-sdk";
+export interface ChatMember {
+  walletAddress: string;
+  displayName: string;
+  avatar: string;
+}
+
+export interface SplitPayCard {
+  title: string;
+  subtitle?: string;
+  fields: Array<{ label: string; value: string }>;
+  actions: Array<{ id?: string; label: string; type?: string; url?: string }>;
+}
+
+export interface SplitPayContext {
+  sender: { wallet: string; displayName: string; avatar: string };
+  group: {
+    getMembers(): Promise<ChatMember[]>;
+    getState(key: string): Promise<unknown>;
+    setState(key: string, value: unknown): Promise<void>;
+  };
+  reply(content: string): Promise<void>;
+  replyCard(card: SplitPayCard): Promise<void>;
+  sendPaymentRequest?(card: unknown): Promise<void>;
+}
+
+type MsgContext = SplitPayContext;
 
 // ---- Helpers ----
 
@@ -232,7 +252,7 @@ export async function handleStatus(ctx: MsgContext): Promise<void> {
   const unsettled = expenses.flatMap((e) => e.splits.filter((s) => !s.settled));
   const totalOwed = unsettled.reduce((sum, s) => sum + s.amount, 0) / 2;
 
-  const fields: CardField[] = [
+  const fields: Array<{ label: string; value: string }> = [
     { label: "Members", value: members.map((m) => m.displayName || shortAddr(m.walletAddress)).join(", ") },
     { label: "Expenses", value: `${expenses.length}` },
     { label: "Outstanding", value: formatUsdc(totalOwed) },
@@ -377,7 +397,7 @@ export async function handleExpenses(args: string, ctx: MsgContext): Promise<voi
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
     .slice(0, limit);
 
-  const fields: CardField[] = recent.map((e) => {
+  const fields: Array<{ label: string; value: string }> = recent.map((e) => {
     const allSettled = e.splits.every((s) => s.settled);
     return {
       label: `${e.description}${allSettled ? " ✓" : ""}`,
@@ -410,7 +430,7 @@ export async function handleBalance(ctx: MsgContext): Promise<void> {
     return;
   }
 
-  const fields: CardField[] = nonZero
+  const fields: Array<{ label: string; value: string }> = nonZero
     .sort(([, a], [, b]) => b - a)
     .map(([wallet, amount]) => ({
       label: shortName(wallet, members),
@@ -441,7 +461,7 @@ export async function handleDebts(ctx: MsgContext): Promise<void> {
     return;
   }
 
-  const fields: CardField[] = debts.map((d) => ({
+  const fields: Array<{ label: string; value: string }> = debts.map((d) => ({
     label: `${shortName(d.from, members)} → ${shortName(d.to, members)}`,
     value: formatUsdc(d.amount),
   }));
@@ -490,7 +510,7 @@ export async function handleSettle(ctx: MsgContext): Promise<void> {
       });
     }
   } else {
-    const fields: CardField[] = myDebts.map((d) => ({
+    const fields: Array<{ label: string; value: string }> = myDebts.map((d) => ({
       label: `→ ${shortName(d.to, members)}`,
       value: formatUsdc(d.amount),
     }));
@@ -503,18 +523,14 @@ export async function handleSettle(ctx: MsgContext): Promise<void> {
   }
 }
 
-export async function handlePaymentComplete(ctx: PaymentCompletedContext): Promise<void> {
-  const groupId = extractState(await ctx.group.getState("splitpay_group_id"));
-  if (!groupId) return;
-
-  const from = ctx.payerWallet;
-  const to = ctx.requesterAddress;
-  const txHash = ctx.txHash ?? undefined;
-  if (!to || !ctx.amount) return;
-
-  const paid = parseFloat(ctx.amount);
-  if (isNaN(paid) || paid <= 0) return;
-
+export async function handlePaymentComplete(
+  from: string,
+  to: string,
+  paid: number,
+  txHash: string | undefined,
+  groupId: string,
+  sendGroupMessage: (content: string) => Promise<void>,
+): Promise<void> {
   const [expenses, members] = await Promise.all([
     fetchExpenses(groupId),
     fetchMembers(groupId),
@@ -542,7 +558,7 @@ export async function handlePaymentComplete(ctx: PaymentCompletedContext): Promi
   }
 
   if (settledCount > 0) {
-    await ctx.sendMessage(
+    await sendGroupMessage(
       `${shortName(from, members)} paid ${formatUsdc(paid)} to ${shortName(to, members)}. ${settledCount} split${settledCount !== 1 ? "s" : ""} settled.`
     );
   }
