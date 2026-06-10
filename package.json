@@ -6,7 +6,7 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsup",
     "start": "node dist/index.js",
-    "postinstall": "mkdir -p node_modules/@bevo/agent-sdk/dist && cp vendor/bevo-agent-sdk/dist/index.js node_modules/@bevo/agent-sdk/dist/index.js && cp vendor/bevo-agent-sdk/dist/index.js node_modules/@bevo/agent-sdk/dist/index.cjs && cp vendor/bevo-agent-sdk/dist/index.d.ts node_modules/@bevo/agent-sdk/dist/index.d.ts && cp vendor/bevo-agent-sdk/dist/agent.d.ts node_modules/@bevo/agent-sdk/dist/agent.d.ts && cp vendor/bevo-agent-sdk/dist/client.d.ts node_modules/@bevo/agent-sdk/dist/client.d.ts && cp vendor/bevo-agent-sdk/dist/types.d.ts node_modules/@bevo/agent-sdk/dist/types.d.ts && (cp vendor/bevo-agent-sdk/dist/index.mjs node_modules/@bevo/agent-sdk/dist/index.mjs 2>/dev/null || true)"
+    "postinstall": "mkdir -p node_modules/@bevo/agent-sdk/dist && cp vendor/bevo-agent-sdk/dist/index.js node_modules/@bevo/agent-sdk/dist/index.js && cp vendor/bevo-agent-sdk/dist/index.js node_modules/@bevo/agent-sdk/dist/index.cjs && cp vendor/bevo-agent-sdk/dist/index.d.ts node_modules/@bevo/agent-sdk/dist/index.d.ts && cp vendor/bevo-agent-sdk/dist/index.d.mts node_modules/@bevo/agent-sdk/dist/index.d.mts && (cp vendor/bevo-agent-sdk/dist/index.mjs node_modules/@bevo/agent-sdk/dist/index.mjs 2>/dev/null || true)"
   },
   "dependencies": {
     "@bevo/agent-sdk": "github:crayscrays/bevo-agent-sdk",

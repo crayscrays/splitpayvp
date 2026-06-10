@@ -1,408 +1,285 @@
-import crypto from "crypto";
-import express, { Request, Response } from "express";
+import { BevoAgentClient } from "./client.js";
 import type {
-  AgentConfig,
-  AgentEventHandler,
-  AgentEventName,
-  CardMessage,
-  CardActionEvent,
-  PaymentRequestCard,
-  GroupMember,
-  ResolvedUser,
-  SlashCommandDefinition,
-  SlashCommandEvent,
+  BotCommand,
+  CommandPayload,
+  MessagePayload,
   WebhookEvent,
-} from "./types";
+  WebhookResponse,
+  SendMessagePayload,
+  UpdateMessagePayload,
+  AppCard,
+} from "./types.js";
 
-const DEFAULT_BASE_URL = "https://api.bevo.com";
+// ── Context objects passed to handlers ───────────────────────────────────────
 
-class ApiClient {
-  constructor(
-    private apiKey: string,
-    private baseUrl: string,
-    private dev: boolean
-  ) {}
-
-  private async fetch(path: string, init: RequestInit = {}): Promise<any> {
-    if (this.dev) {
-      const body = init.body ? JSON.parse(init.body as string) : undefined;
-      console.log(`[agent-sdk:dev] ${init.method || "GET"} ${path}`, body ?? "");
-      return null;
-    }
-    const res = await globalThis.fetch(`${this.baseUrl}${path}`, {
-      ...init,
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${this.apiKey}`,
-        ...(init.headers || {}),
-      },
-    });
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      throw new Error(`Agent API ${init.method || "GET"} ${path} failed: ${res.status} ${body}`);
-    }
-    const text = await res.text();
-    return text ? JSON.parse(text) : null;
-  }
-
-  registerCommands(commands: SlashCommandDefinition[]) {
-    return this.fetch("/api/agent/commands", {
-      method: "PUT",
-      body: JSON.stringify({ commands }),
-    });
-  }
-
-  sendMessage(groupId: string | number, channelId: string | number, content: string) {
-    return this.fetch("/api/agent/send", {
-      method: "POST",
-      body: JSON.stringify({
-        groupId: Number(groupId),
-        channelId: Number(channelId),
-        content,
-        contentType: "text",
-      }),
-    });
-  }
-
-  sendCard(groupId: string | number, channelId: string | number, card: CardMessage) {
-    return this.fetch("/api/agent/send", {
-      method: "POST",
-      body: JSON.stringify({
-        groupId: Number(groupId),
-        channelId: Number(channelId),
-        card,
-        contentType: "app_card",
-      }),
-    });
-  }
-
-  sendPaymentRequest(
-    groupId: string | number,
-    channelId: string | number,
-    card: PaymentRequestCard
-  ) {
-    return this.fetch("/api/agent/send", {
-      method: "POST",
-      body: JSON.stringify({
-        groupId: Number(groupId),
-        channelId: Number(channelId),
-        card,
-        contentType: "payment_request",
-      }),
-    });
-  }
-
-  updateMessage(
-    messageId: number | string,
-    payload: {
-      content?: string;
-      card?: CardMessage;
-      contentType?: string;
-      metadata?: Record<string, unknown>;
-    }
-  ) {
-    return this.fetch(`/api/agent/messages/${encodeURIComponent(String(messageId))}`, {
-      method: "PATCH",
-      body: JSON.stringify(payload),
-    });
-  }
-
-  getGroupMembers(groupId: string | number): Promise<GroupMember[]> {
-    return this.fetch(`/api/agent/groups/${encodeURIComponent(String(groupId))}/members`);
-  }
-
-  getState(groupId: string | number, key: string) {
-    return this.fetch(
-      `/api/agent/groups/${encodeURIComponent(String(groupId))}/state/${encodeURIComponent(key)}`
-    );
-  }
-
-  setState(groupId: string | number, key: string, value: any) {
-    return this.fetch(
-      `/api/agent/groups/${encodeURIComponent(String(groupId))}/state/${encodeURIComponent(key)}`,
-      {
-        method: "PUT",
-        body: JSON.stringify({ value }),
-      }
-    );
-  }
+export interface DeferredContext {
+  /** Update the placeholder with a text reply. */
+  update(content: string): Promise<void>;
+  /** Update the placeholder with a rich card. */
+  updateCard(card: AppCard): Promise<void>;
+  /** Update the placeholder with a full payload. */
+  updateWith(payload: UpdateMessagePayload): Promise<void>;
 }
 
-// ── MessageContext ─────────────────────────────────────
+export interface CommandContext {
+  /** Parsed command payload from Bevo. */
+  readonly payload: CommandPayload;
+  /** Pre-authenticated agent client. */
+  readonly client: BevoAgentClient;
 
-export class MessageContext {
-  public sender: WebhookEvent["sender"];
-  public content: string;
-  public contentType: string;
-  public mentioned: boolean;
-  public groupId: string;
-  public channelId: string;
-  public messageId?: string;
-  public timestamp: string;
-  public event: string;
-  public raw: any;
+  /** Reply instantly with plain text (sync — returns from webhook). */
+  reply(content: string): void;
+  /** Reply instantly with a card (sync — returns from webhook). */
+  replyCard(card: AppCard): void;
 
-  constructor(
-    private api: ApiClient,
-    event: WebhookEvent | any
-  ) {
-    this.raw = event;
-    this.event = event.event;
-    this.groupId = event.group_id ?? String(event.payload?.groupId ?? "");
-    this.channelId = event.channel_id ?? String(event.payload?.channelId ?? "");
-    this.messageId = event.message_id ?? String(event.payload?.messageId ?? "");
-    this.sender = event.sender ?? {
-      wallet: event.payload?.senderWallet,
-      displayName: "",
-      avatar: "",
-    };
-    this.content = event.content ?? event.payload?.content ?? "";
-    this.contentType = event.content_type ?? "text";
-    this.mentioned = event.mentioned ?? false;
-    this.timestamp = event.timestamp ?? event.payload?.createdAt ?? "";
-  }
-
-  reply(content: string) {
-    return this.api.sendMessage(this.groupId, this.channelId, content);
-  }
-
-  replyCard(card: CardMessage) {
-    return this.api.sendCard(this.groupId, this.channelId, card);
-  }
-
-  group = {
-    getMembers: () => this.api.getGroupMembers(this.groupId),
-    getState: (key: string) => this.api.getState(this.groupId, key),
-    setState: (key: string, value: any) => this.api.setState(this.groupId, key, value),
-  };
+  /**
+   * Defer the response: returns a `DeferredContext` you can update later.
+   * Bevo keeps the "thinking" placeholder until you call `deferred.update()`.
+   *
+   * @example
+   * const deferred = await ctx.defer();
+   * const result = await expensiveWork();
+   * await deferred.update(result);
+   */
+  defer(): Promise<DeferredContext>;
 }
 
-// ── SlashCommandContext ────────────────────────────────
+export interface MessageContext {
+  /** The incoming @mention payload. */
+  readonly payload: MessagePayload;
+  /** Pre-authenticated agent client. */
+  readonly client: BevoAgentClient;
 
-export class SlashCommandContext {
-  public commandName: string;
-  public options: Record<string, any>;
-  public resolved: { users: Record<string, ResolvedUser> };
-  public rawArgs: string;
-  public groupId: number;
-  public channelId: number;
-  public senderWallet: string;
-  public raw: SlashCommandEvent;
+  /** Reply to the same channel. */
+  reply(content: string): Promise<void>;
+  /** Reply to the same channel with a rich payload. */
+  replyWith(payload: Omit<SendMessagePayload, "groupId" | "channelId">): Promise<void>;
+}
 
-  private _pendingReply: { content?: string; card?: CardMessage; type?: number } | null = null;
-  public placeholderMessageId?: number;
+// ── Handler types ─────────────────────────────────────────────────────────────
 
-  constructor(
-    private api: ApiClient,
-    event: SlashCommandEvent
-  ) {
-    this.raw = event;
-    const p = event.payload;
-    this.commandName = p.commandName;
-    this.options = p.options;
-    this.resolved = p.resolved;
-    this.rawArgs = p.rawArgs;
-    this.groupId = p.groupId;
-    this.channelId = p.channelId;
-    this.senderWallet = p.senderWallet;
-    this.placeholderMessageId = p.placeholderMessageId;
-  }
+export type CommandHandler = (ctx: CommandContext) => void | Promise<void>;
+export type MessageHandler = (ctx: MessageContext) => void | Promise<void>;
 
-  // Synchronous reply — returned directly in the webhook HTTP response.
-  // Bevo posts it as a bot message in the channel automatically.
-  reply(content: string): void {
-    this._pendingReply = { content };
-  }
+// ── Agent options ─────────────────────────────────────────────────────────────
 
-  replyCard(card: CardMessage): void {
-    this._pendingReply = { card };
+export interface BevoAgentOptions {
+  /** Agent API key obtained from the Bevo developer portal. */
+  apiKey: string;
+  /**
+   * Base URL of the Bevo backend (e.g. `https://bevo-server-staging.up.railway.app`).
+   * Override for local development.
+   */
+  apiBase: string;
+}
+
+// ── BevoAgent ─────────────────────────────────────────────────────────────────
+
+/**
+ * Core agent class. Register command and message handlers, then expose the
+ * webhook endpoint via `.express()` (Express) or `.fetch()` (edge / serverless).
+ *
+ * @example
+ * ```ts
+ * import { BevoAgent } from "@bevo/agent-sdk";
+ *
+ * const agent = new BevoAgent({ apiKey: process.env.BEVO_API_KEY!, apiBase: "https://bevo-server-staging.up.railway.app" });
+ *
+ * agent.command("ping", (ctx) => ctx.reply("pong!"));
+ *
+ * agent.onMessage(async (ctx) => {
+ *   await ctx.reply(`You said: ${ctx.payload.content}`);
+ * });
+ *
+ * // Express
+ * app.post("/webhook", agent.express());
+ *
+ * // Next.js / Cloudflare Workers
+ * export const POST = agent.fetch();
+ * ```
+ */
+export class BevoAgent {
+  readonly client: BevoAgentClient;
+
+  private readonly commandHandlers = new Map<string, CommandHandler>();
+  private messageHandler: MessageHandler | null = null;
+  private registeredCommands: BotCommand[] = [];
+
+  constructor(options: BevoAgentOptions) {
+    this.client = new BevoAgentClient({
+      apiKey: options.apiKey,
+      apiBase: options.apiBase,
+    });
   }
 
   /**
-   * Signal that you will handle this command asynchronously.
-   * Bevo shows a thinking bubble until you call `updateMessage()`.
-   * After deferring, use `ctx.updateMessage(ctx.placeholderMessageId!, ...)`.
+   * Register a slash command handler.
+   * @param name - Command name without the leading `/`.
    */
-  defer(): void {
-    this._pendingReply = { type: 5 };
-  }
-
-  // Lookup a resolved user from options.
-  // Pass the option value (e.g. ctx.options.user) — handles "@" prefix automatically.
-  resolveUser(mention: string): ResolvedUser | undefined {
-    return (
-      this.resolved.users[mention] ??
-      this.resolved.users[mention.startsWith("@") ? mention : `@${mention}`]
-    );
-  }
-
-  // Async fallback — use this when your response takes longer than 3 seconds
-  sendMessage(content: string) {
-    return this.api.sendMessage(this.groupId, this.channelId, content);
-  }
-
-  sendCard(card: CardMessage) {
-    return this.api.sendCard(this.groupId, this.channelId, card);
-  }
-
-  sendPaymentRequest(card: PaymentRequestCard) {
-    return this.api.sendPaymentRequest(this.groupId, this.channelId, card);
-  }
-
-  /**
-   * Update the bot_thinking placeholder (or any message this agent sent).
-   * Use after `defer()` to post the real response.
-   */
-  updateMessage(
-    messageId: number | string,
-    payload: {
-      content?: string;
-      card?: CardMessage;
-      contentType?: string;
-      metadata?: Record<string, unknown>;
-    }
-  ) {
-    return this.api.updateMessage(messageId, payload);
-  }
-
-  group = {
-    getMembers: () => this.api.getGroupMembers(this.groupId),
-    getState: (key: string) => this.api.getState(this.groupId, key),
-    setState: (key: string, value: any) => this.api.setState(this.groupId, key, value),
-  };
-
-  /** @internal */
-  _getReply() {
-    return this._pendingReply;
-  }
-}
-
-// ── Agent ──────────────────────────────────────────────
-
-export class Agent {
-  private handlers = new Map<AgentEventName, AgentEventHandler[]>();
-  private api: ApiClient;
-  private webhookSecret?: string;
-
-  constructor(config: AgentConfig) {
-    this.api = new ApiClient(
-      config.apiKey,
-      config.baseUrl || DEFAULT_BASE_URL,
-      config.dev ?? false
-    );
-    this.webhookSecret = config.webhookSecret;
-  }
-
-  on(event: AgentEventName, handler: AgentEventHandler): this {
-    const list = this.handlers.get(event) || [];
-    list.push(handler);
-    this.handlers.set(event, list);
+  command(name: string, handler: CommandHandler, meta?: Omit<BotCommand, "name">): this {
+    this.commandHandlers.set(name.toLowerCase(), handler);
+    this.registeredCommands.push({ name, ...meta });
     return this;
   }
 
-  // Register slash commands with Bevo — call once at startup or deploy time.
-  registerCommands(commands: SlashCommandDefinition[]) {
-    return this.api.registerCommands(commands);
+  /**
+   * Register a handler for @mention messages.
+   * Called when a user mentions the agent in a group channel.
+   */
+  onMessage(handler: MessageHandler): this {
+    this.messageHandler = handler;
+    return this;
   }
 
-  private verifySignature(rawBody: Buffer | string, signature: string | undefined): boolean {
-    if (!this.webhookSecret) return true; // skip verification when no secret configured
-    if (!signature) return false;
-    const body = typeof rawBody === "string" ? rawBody : rawBody.toString("utf8");
-    const expected = crypto.createHmac("sha256", this.webhookSecret).update(body).digest("hex");
-    const sigBuf = Buffer.from(signature, "utf8");
-    const expBuf = Buffer.from(expected, "utf8");
-    if (sigBuf.length !== expBuf.length) return false;
-    return crypto.timingSafeEqual(sigBuf, expBuf);
+  /**
+   * Push the registered commands to Bevo. Call this once on startup after
+   * all `agent.command()` calls.
+   */
+  async syncCommands(): Promise<void> {
+    await this.client.registerCommands(this.registeredCommands);
   }
 
-  private async dispatch(event: AgentEventName, ctx: any) {
-    const list = this.handlers.get(event);
-    if (!list || list.length === 0) return;
-    for (const handler of list) {
-      try {
-        await handler(ctx);
-      } catch (err) {
-        console.error(`[agent-sdk] handler for "${event}" threw:`, err);
-      }
+  // ── Core webhook handler ──────────────────────────────────────────────────
+
+  /**
+   * Process a parsed webhook event body.
+   * Returns a `WebhookResponse` for slash commands (or `null` for message events).
+   */
+  async handleEvent(event: WebhookEvent): Promise<WebhookResponse | null> {
+    if (event.event === "slash_command") {
+      return this._handleCommand(event.payload);
     }
+    if (event.event === "message") {
+      await this._handleMessage(event.payload);
+      return null;
+    }
+    return null;
   }
 
-  listen(port: number): ReturnType<ReturnType<typeof express>["listen"]> {
-    const app = express();
+  // ── Express adapter ───────────────────────────────────────────────────────
 
-    app.get("/health", (_req: Request, res: Response) => {
-      res.status(200).json({ status: "ok" });
-    });
-
-    app.post(
-      "/webhook",
-      express.raw({ type: "application/json" }),
-      async (req: Request, res: Response) => {
-        const signature =
-          (req.headers["x-webhook-signature"] as string | undefined) ||
-          (req.headers["X-Webhook-Signature"] as unknown as string | undefined);
-
-        const rawBody: Buffer = (
-          req.body instanceof Buffer
-            ? req.body
-            : Buffer.from(typeof req.body === "string" ? req.body : JSON.stringify(req.body || {}))
-        ) as Buffer;
-
-        if (!this.verifySignature(rawBody, signature)) {
-          res.status(401).json({ error: "Invalid signature" });
-          return;
-        }
-
-        let payload: any;
-        try {
-          payload = JSON.parse(rawBody.toString("utf8"));
-        } catch {
-          res.status(400).json({ error: "Invalid JSON" });
-          return;
-        }
-
-        const eventName: AgentEventName = payload.event;
-
-        if (eventName === "slash_command") {
-          // Slash commands: await the handler so the bot can reply synchronously.
-          // The reply is returned in the HTTP response body — Bevo posts it as a
-          // bot message automatically. No need to call sendMessage() for simple replies.
-          const ctx = new SlashCommandContext(this.api, payload as SlashCommandEvent);
-          await this.dispatch("slash_command", ctx).catch((err) =>
-            console.error(`[agent-sdk] slash_command dispatch error:`, err)
-          );
-          const reply = ctx._getReply();
-          if (reply?.type === 5) {
-            // Deferred — shows thinking bubble; agent will PATCH the placeholder later
-            res.status(200).json({ type: 5 });
-          } else if (reply?.content || reply?.card) {
-            res.status(200).json(reply);
-          } else {
-            res.status(204).send();
-          }
-        } else if (eventName === "card_action") {
-          // Card action events: ack immediately, dispatch async.
-          const ctx = new MessageContext(this.api, payload as CardActionEvent);
-          res.status(200).json({ ok: true });
-          this.dispatch("card_action", ctx).catch((err) =>
-            console.error(`[agent-sdk] card_action dispatch error:`, err)
-          );
+  /**
+   * Returns an Express-compatible request handler.
+   * Mount it with `app.post("/webhook", agent.express())`.
+   */
+  express() {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return async (req: any, res: any): Promise<void> => {
+      try {
+        const body: WebhookEvent = req.body;
+        const response = await this.handleEvent(body);
+        if (response !== null) {
+          res.status(200).json(response);
         } else {
-          // All other events: ack immediately, dispatch async.
-          const ctx = new MessageContext(this.api, payload);
-          res.status(200).json({ ok: true });
-          this.dispatch(eventName, ctx).catch((err) =>
-            console.error(`[agent-sdk] dispatch error:`, err)
-          );
+          res.status(204).end();
         }
+      } catch (err) {
+        console.error("[bevo-agent-sdk] webhook error:", err);
+        res.status(500).json({ error: "Internal agent error" });
       }
-    );
-
-    return app.listen(port);
+    };
   }
-}
 
-export function createAgent(config: AgentConfig): Agent {
-  return new Agent(config);
+  /**
+   * Returns a Fetch-API-compatible handler for edge / serverless runtimes
+   * (Cloudflare Workers, Next.js App Router, Vercel Edge Functions).
+   *
+   * @example
+   * // Next.js app/api/webhook/route.ts
+   * export const POST = agent.fetch();
+   */
+  fetch() {
+    return async (request: Request): Promise<Response> => {
+      try {
+        const body = await request.json() as WebhookEvent;
+        const response = await this.handleEvent(body);
+        if (response !== null) {
+          return new Response(JSON.stringify(response), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        return new Response(null, { status: 204 });
+      } catch (err) {
+        console.error("[bevo-agent-sdk] webhook error:", err);
+        return new Response(JSON.stringify({ error: "Internal agent error" }), {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+    };
+  }
+
+  // ── Private: command handling ─────────────────────────────────────────────
+
+  private async _handleCommand(payload: CommandPayload): Promise<WebhookResponse> {
+    const handler = this.commandHandlers.get(payload.commandName.toLowerCase());
+    if (!handler) {
+      return { content: `Unknown command: /${payload.commandName}` };
+    }
+
+    let syncResponse: WebhookResponse | null = null;
+
+    const ctx: CommandContext = {
+      payload,
+      client: this.client,
+
+      reply: (content: string) => {
+        syncResponse = { content };
+      },
+
+      replyCard: (card: AppCard) => {
+        syncResponse = { card };
+      },
+
+      defer: async (): Promise<DeferredContext> => {
+        syncResponse = { type: 5 };
+        const placeholderMessageId = payload.placeholderMessageId;
+        return {
+          update: (content: string) =>
+            this.client
+              .updateMessage(placeholderMessageId, { content, contentType: "text" })
+              .then(() => undefined),
+          updateCard: (card: AppCard) =>
+            this.client
+              .updateMessage(placeholderMessageId, {
+                card,
+                contentType: card.type === "payment_request" ? "payment_request" : "app_card",
+              })
+              .then(() => undefined),
+          updateWith: (p: UpdateMessagePayload) =>
+            this.client
+              .updateMessage(placeholderMessageId, p)
+              .then(() => undefined),
+        };
+      },
+    };
+
+    await handler(ctx);
+
+    return syncResponse ?? { content: "" };
+  }
+
+  // ── Private: message handling ─────────────────────────────────────────────
+
+  private async _handleMessage(payload: MessagePayload): Promise<void> {
+    if (!this.messageHandler) return;
+
+    const ctx: MessageContext = {
+      payload,
+      client: this.client,
+
+      reply: (content: string) =>
+        this.client
+          .sendMessage({ groupId: payload.groupId, channelId: payload.channelId, content })
+          .then(() => undefined),
+
+      replyWith: (p) =>
+        this.client
+          .sendMessage({ groupId: payload.groupId, channelId: payload.channelId, ...p })
+          .then(() => undefined),
+    };
+
+    await this.messageHandler(ctx);
+  }
 }

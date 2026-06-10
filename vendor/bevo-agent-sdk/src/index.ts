@@ -1,25 +1,57 @@
-export { Agent, MessageContext, SlashCommandContext, createAgent } from "./agent";
+export { BevoAgent } from "./agent.js";
 export type {
-  AgentConfig,
-  GroupMember,
-  WebhookEvent,
-  WebhookSender,
-  CardActionEvent,
-  ActionEvent,
-  JoinedEvent,
-  RemovedEvent,
-  CardMessage,
-  CardAction,
-  CardActionStyle,
-  CardActionKind,
-  CardActionType,
-  CardField,
-  PaymentRequestCard,
-  AgentEventName,
-  AgentEventHandler,
+  BevoAgentOptions,
+  CommandContext,
+  MessageContext,
+  DeferredContext,
+  CommandHandler,
+  MessageHandler,
+} from "./agent.js";
+
+export { BevoAgentClient } from "./client.js";
+export type { BevoAgentClientOptions } from "./client.js";
+
+export type {
+  // Commands
+  BotCommand,
   CommandOption,
-  SlashCommandDefinition,
-  ResolvedUser,
-  SlashCommandPayload,
+  CommandOptionType,
+
+  // Content
+  BotContentType,
+  MessageVisibility,
+  ExecutionStatus,
+  AppCard,
+  AppCardAction,
+  EmbedMessage,
+  EmbedField,
+  ButtonComponent,
+  ButtonStyle,
+  SelectMenuComponent,
+  SelectOption,
+  ActionRow,
+
+  // Webhook events
+  CommandPayload,
+  MessagePayload,
   SlashCommandEvent,
-} from "./types";
+  MessageEvent,
+  WebhookEvent,
+  ResolvedUser,
+
+  // API I/O
+  SendMessagePayload,
+  UpdateMessagePayload,
+  SendDmPayload,
+  GroupMember,
+  GroupMessage,
+  DmMessage,
+  WebhookResponse,
+  SyncTextResponse,
+  SyncCardResponse,
+  DeferredAck,
+
+  // Misc
+  BevoPermission,
+  AppCategory,
+} from "./types.js";

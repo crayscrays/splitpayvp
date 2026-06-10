@@ -126,7 +126,7 @@ async function makeMessageCtx(ctx: MessageContext): Promise<SplitPayContext> {
 
 const agent = new BevoAgent({
   apiKey: process.env.AGENT_API_KEY!,
-  apiBase: process.env.AGENT_BASE_URL || "https://0xchat.cresign.xyz",
+  apiBase: process.env.AGENT_BASE_URL || "https://bevo-server-staging.up.railway.app",
 });
 
 // Register all slash commands
@@ -211,7 +211,7 @@ const PORT = Number(process.env.PORT) || 3000;
 app.listen(PORT, () => {
   console.log(`SplitPay agent listening on port ${PORT}`);
   console.log(`  API key: ${process.env.AGENT_API_KEY ? "set" : "MISSING"}`);
-  console.log(`  Base URL: ${process.env.AGENT_BASE_URL || "https://0xchat.cresign.xyz"}`);
+  console.log(`  Base URL: ${process.env.AGENT_BASE_URL || "https://bevo-server-staging.up.railway.app"}`);
   console.log(`  Supabase URL: ${process.env.SUPABASE_URL ?? "MISSING"}`);
   console.log(`  Supabase key: ${process.env.SUPABASE_ANON_KEY ? "set" : "MISSING"}`);
 });

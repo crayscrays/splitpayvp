@@ -1,186 +1,260 @@
-export interface GroupMember {
-  walletAddress: string;
-  displayName: string;
-  avatar: string;
-  roles: string[];
-}
+// ── Command & capability schema ──────────────────────────────────────────────
 
-export interface AgentConfig {
-  apiKey: string;
-  /** Optional — used to verify webhook signatures when the server sends X-Webhook-Signature. */
-  webhookSecret?: string;
-  baseUrl?: string;
-  /**
-   * Enable dev mode — outbound API calls are logged to console instead of hitting the network.
-   * The webhook server still runs so you can receive real events via ngrok/localtunnel.
-   */
-  dev?: boolean;
-}
-
-export interface WebhookSender {
-  wallet: string;
-  displayName: string;
-  avatar: string;
-}
-
-export interface WebhookEvent {
-  event: string;
-  group_id: string;
-  channel_id: string;
-  message_id?: string;
-  sender: WebhookSender;
-  content: string;
-  content_type: string;
-  mentioned: boolean;
-  timestamp: string;
-}
-
-export interface CardActionEvent {
-  event: "card_action";
-  payload: {
-    actionId: string;
-    actionKind: CardActionKind;
-    actionPayload: Record<string, unknown> | null;
-    messageId: number;
-    result: { txHash?: string };
-    senderWallet: string;
-    groupId: number;
-    channelId: number;
-  };
-}
-
-/** @deprecated Use CardActionEvent */
-export interface ActionEvent {
-  event: "action";
-  action_id: string;
-  user: { wallet: string; displayName: string };
-  group_id: string;
-  payload?: any;
-}
-
-export interface JoinedEvent {
-  event: "joined";
-  group_id: string;
-  added_by: string;
-}
-
-export interface RemovedEvent {
-  event: "removed";
-  group_id: string;
-}
-
-export type CardActionStyle = "primary" | "secondary" | "danger";
-export type CardActionKind = "callback" | "wallet_action" | "link" | "open_app";
-/** @deprecated Use CardActionKind */
-export type CardActionType = CardActionKind;
-
-export interface CardAction {
-  /** Unique identifier — returned in card_action webhook event */
-  id: string;
-  label: string;
-  kind: CardActionKind;
-  style?: CardActionStyle;
-  /** For "callback": opaque payload forwarded to your webhook */
-  payload?: Record<string, unknown>;
-  /** For "wallet_action": transaction to sign */
-  tx?: {
-    to: string;
-    /** ERC-20 token contract address; omit for native ETH */
-    token?: string;
-    amount: string;
-    decimals?: number;
-  };
-  /** For "link" */
-  url?: string;
-  /** For "open_app" */
-  appSlug?: string;
-}
-
-export interface CardField {
-  label: string;
-  value: string;
-}
-
-export interface CardMessage {
-  title: string;
-  subtitle?: string;
-  imageUrl?: string;
-  fields?: CardField[];
-  actions?: CardAction[];
-  /**
-   * Optional metadata attached to the card.
-   * - `targetWallet`: only this wallet address can interact with the card's actions.
-   */
-  metadata?: {
-    targetWallet?: string;
-    [key: string]: unknown;
-  };
-}
-
-// ── Payment Request Card ──────────────────────────────────────
-
-/**
- * Sends a tappable "Requesting X ETH · Tap to pay" bubble into a group channel.
- * When the user pays, your webhook receives a `card_action` event with
- * `actionId: "pay"` and `result: { txHash }`.
- */
-export interface PaymentRequestCard {
-  type: "payment_request";
-  amount: string;
-  symbol: string;
-  /** ERC-20 token contract address; omit for native ETH */
-  tokenAddress?: string;
-  decimals?: number;
-  /** Address that receives the payment */
-  requesterAddress: string;
-  /**
-   * If set, only this wallet can tap to pay.
-   * Other members see "Not for you" and cannot interact.
-   */
-  targetWallet?: string;
-}
+export type CommandOptionType = "user" | "string" | "integer" | "boolean";
 
 export interface CommandOption {
   name: string;
+  type?: CommandOptionType;
   description?: string;
-  type: "user" | "string" | "integer" | "boolean";
   required?: boolean;
 }
 
-export interface SlashCommandDefinition {
+export interface BotCommand {
   name: string;
   description?: string;
   options?: CommandOption[];
 }
 
+// ── Message content ───────────────────────────────────────────────────────────
+
+export type BotContentType =
+  | "text"
+  | "app_card"
+  | "embed"
+  | "components"
+  | "agent_tip"
+  | "agent_info"
+  | "ephemeral"
+  | "payment_request"
+  | "contract_call"
+  | "butler_action"
+  | "approval_request"
+  | "reply"
+  | "attachment"
+  | "link_unfurl";
+
+export type MessageVisibility = "public" | "ephemeral" | "targeted" | "asymmetric";
+
+export type ExecutionStatus =
+  | "pending_action"
+  | "signed"
+  | "confirmed"
+  | "rejected"
+  | "cancelled"
+  | "expired";
+
+// ── Rich content structures ───────────────────────────────────────────────────
+
+export interface AppCardAction {
+  id: string;
+  label: string;
+  type?: "link" | "action" | "transaction";
+  url?: string;
+  payload?: Record<string, unknown>;
+}
+
+export interface AppCard {
+  type: "app_card" | "payment_request";
+  title: string;
+  description?: string;
+  imageUrl?: string;
+  fields?: Array<{ label: string; value: string }>;
+  actions?: AppCardAction[];
+}
+
+export interface EmbedField {
+  name: string;
+  value: string;
+  inline?: boolean;
+}
+
+export interface EmbedMessage {
+  color?: string;
+  author?: { name: string; iconUrl?: string; url?: string };
+  title?: string;
+  url?: string;
+  description?: string;
+  fields?: EmbedField[];
+  thumbnail?: { url: string };
+  image?: { url: string };
+  footer?: { text: string; iconUrl?: string };
+  timestamp?: string;
+}
+
+export type ButtonStyle = "primary" | "secondary" | "success" | "danger" | "link";
+
+export interface ButtonComponent {
+  type: "button";
+  customId?: string;
+  label: string;
+  style?: ButtonStyle;
+  url?: string;
+  disabled?: boolean;
+  emoji?: string;
+}
+
+export interface SelectOption {
+  label: string;
+  value: string;
+  description?: string;
+  emoji?: string;
+}
+
+export interface SelectMenuComponent {
+  type: "select_menu";
+  customId: string;
+  placeholder?: string;
+  options: SelectOption[];
+  minValues?: number;
+  maxValues?: number;
+}
+
+export interface ActionRow {
+  type: "action_row";
+  components: Array<ButtonComponent | SelectMenuComponent>;
+}
+
+// ── Webhook event payloads ────────────────────────────────────────────────────
+
 export interface ResolvedUser {
-  walletAddress: string;
+  principalId: string;
   username: string | null;
   displayName: string | null;
 }
 
-export interface SlashCommandPayload {
+export interface CommandPayload {
   commandName: string;
-  options: Record<string, any>;
+  options: Record<string, unknown>;
   resolved: { users: Record<string, ResolvedUser> };
   rawArgs: string;
   groupId: number;
   channelId: number;
-  senderWallet: string;
+  senderId: string;
   messageId: number;
+  placeholderMessageId: number;
   createdAt: string;
-  /**
-   * ID of the `bot_thinking` placeholder message inserted immediately.
-   * Use with `ctx.updateMessage(placeholderMessageId, ...)` for deferred responses.
-   */
-  placeholderMessageId?: number;
+}
+
+export interface MessagePayload {
+  id: number;
+  groupId: number;
+  channelId: number;
+  senderId: string;
+  content: string;
+  contentType: string;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
 }
 
 export interface SlashCommandEvent {
   event: "slash_command";
-  payload: SlashCommandPayload;
+  payload: CommandPayload;
 }
 
-export type AgentEventName = "message" | "slash_command" | "card_action" | "joined" | "removed";
+export interface MessageEvent {
+  event: "message";
+  payload: MessagePayload;
+}
 
-export type AgentEventHandler = (ctx: any) => void | Promise<void>;
+export type WebhookEvent = SlashCommandEvent | MessageEvent;
+
+// ── Agent API I/O ─────────────────────────────────────────────────────────────
+
+export interface SendMessagePayload {
+  groupId: number;
+  channelId: number;
+  content?: string;
+  contentType?: BotContentType;
+  card?: AppCard;
+  embed?: EmbedMessage;
+  components?: ActionRow[];
+  metadata?: Record<string, unknown>;
+}
+
+export interface UpdateMessagePayload {
+  content?: string;
+  contentType?: BotContentType;
+  card?: AppCard;
+  embed?: EmbedMessage;
+  components?: ActionRow[];
+  metadata?: Record<string, unknown>;
+}
+
+export interface SendDmPayload {
+  conversationId: string;
+  content: string;
+}
+
+export interface GroupMember {
+  id: number;
+  groupId: number;
+  principalId: string;
+  walletAddress?: string;
+  roleIds: string[];
+  joinedAt: string;
+  displayName?: string;
+  username?: string;
+  avatar?: string | null;
+  isOnline?: boolean;
+}
+
+export interface GroupMessage {
+  id: number;
+  groupId: number;
+  channelId: number;
+  content: string;
+  contentType: string;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export interface DmMessage {
+  id: string;
+  conversationId: string;
+  senderId: string;
+  content: string;
+  createdAt: string;
+}
+
+// ── Webhook response shapes ───────────────────────────────────────────────────
+
+/** Synchronous text reply returned from the webhook handler. */
+export interface SyncTextResponse {
+  content: string;
+  type?: 4;
+}
+
+/** Synchronous card reply returned from the webhook handler. */
+export interface SyncCardResponse {
+  card: AppCard;
+  type?: 4;
+}
+
+/** Deferred ACK — Bevo keeps the thinking placeholder; agent will PATCH later. */
+export interface DeferredAck {
+  type: 5;
+}
+
+export type WebhookResponse = SyncTextResponse | SyncCardResponse | DeferredAck;
+
+// ── Permission scopes ─────────────────────────────────────────────────────────
+
+export type BevoPermission =
+  | "wallet.read"
+  | "wallet.send"
+  | "wallet.sign"
+  | "user.read"
+  | "contacts.read"
+  | "groups.read"
+  | "chat.write"
+  | "bots.manage";
+
+// ── App category ──────────────────────────────────────────────────────────────
+
+export type AppCategory =
+  | "defi"
+  | "nfts"
+  | "games"
+  | "social"
+  | "utilities"
+  | "other";
